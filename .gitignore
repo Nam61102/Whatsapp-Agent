@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+backend/sessions/
+backend/mongo_data/
+backend/mongo_rs/
+backend/scratch/
+*.log

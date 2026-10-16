@@ -1,0 +1,507 @@
+Yes. I understand the app you want to build. The important part is that this is not just a normal React Native chat app—you want a WhatsApp-connected client + real-time synchronization + secure multi-user backend + AI intelligence layer.
+
+There is one major architecture decision we should make first: you cannot simply reproduce WhatsApp Web inside React Native and independently capture/store all WhatsApp data using an unofficial WhatsApp Web automation library without significant reliability and account-risk issues. The production architecture should use an officially supported WhatsApp integration where possible.
+
+What I would build
+
+                 ┌──────────────────────────┐
+
+                 │      React Native App     │
+
+                 │                          │
+
+                 │  Login / WhatsApp Connect│
+
+                 │  Dashboard               │
+
+                 │  WhatsApp Chat           │
+
+                 │  Contacts                │
+
+                 │  AI Insights             │
+
+                 │  Extractions             │
+
+                 │  Profile                 │
+
+                 └────────────┬─────────────┘
+
+                              │ HTTPS / WebSocket
+
+                              ▼
+
+                 ┌──────────────────────────┐
+
+                 │       Backend API        │
+
+                 │                          │
+
+                 │ Authentication           │
+
+                 │ WhatsApp Integration     │
+
+                 │ Chat Sync                │
+
+                 │ Message Processing       │
+
+                 │ AI Pipeline               │
+
+                 │ Reply Generation          │
+
+                 └────────────┬─────────────┘
+
+                              │
+
+             ┌────────────────┼────────────────┐
+
+             ▼                ▼                ▼
+
+      PostgreSQL          Redis/Queue       AI Provider
+
+      Database            Workers           API
+
+             │
+
+             ▼
+
+       Per-user data
+
+       isolation
+
+Main app screens
+
+1. WhatsApp Connect
+
+When the app opens:
+
+┌─────────────────────────────┐
+
+│                             │
+
+│        Connect WhatsApp     │
+
+│                             │
+
+│   Connect your WhatsApp     │
+
+│   to continue               │
+
+│                             │
+
+│      [ Scan QR Code ]       │
+
+│                             │
+
+│      Or                     │
+
+│                             │
+
+│   [ Connect with Number ]   │
+
+│                             │
+
+└─────────────────────────────┘
+
+After successful authentication, the WhatsApp connection is associated with that application's authenticated user.
+
+2. WhatsApp Chat
+
+The actual chat experience should feel familiar:
+
+Contacts       │ Chat
+
+───────────────┼──────────────────
+
+Rahul          │ Rahul
+
+Aditya         │ ────────────────
+
+Bhushan        │ Hi bro
+
+Sneha          │
+
+               │ Ha bol
+
+               │
+
+               │ How are you?
+
+               │
+
+               │ ────────────────
+
+               │ [ Type message... ] [Send]
+
+Messages should arrive through a real-time event mechanism rather than repeatedly polling the server.
+
+For example:
+
+WhatsApp
+
+   ↓
+
+Webhook / connection event
+
+   ↓
+
+Backend
+
+   ↓
+
+PostgreSQL
+
+   ↓
+
+WebSocket
+
+   ↓
+
+React Native
+
+3. Dashboard
+
+This is where your AI functionality becomes useful.
+
+Example:
+
+Good Morning 👋
+
+Important Today
+
+────────────────────────
+
+🎂 Birthday
+
+Rahul's birthday is tomorrow
+
+💬 Birthday Wishes
+
+3 people recently wished someone
+
+happy birthday
+
+📅 Upcoming
+
+Meeting mentioned with Aditya
+
+tomorrow at 11:00 AM
+
+✨ AI Suggestions
+
+You may want to reply to Rahul
+
+"Arey bhai happy birthday! 🎂
+
+Have a great day bro ❤️"
+
+[ Send ]
+
+The AI should not treat every message as an important event.
+
+We can classify messages into:
+
+NORMAL_CHAT
+
+BIRTHDAY
+
+BIRTHDAY_WISH
+
+MEETING
+
+APPOINTMENT
+
+REMINDER
+
+IMPORTANT_PERSONAL_EVENT
+
+WORK_EVENT
+
+TASK
+
+PAYMENT
+
+TRAVEL
+
+RELATIONSHIP_EVENT
+
+OTHER
+
+Only relevant/high-confidence information goes into the dashboard.
+
+4. AI reply suggestions
+
+This is one of the strongest features.
+
+Instead of simply asking AI:
+
+"Reply to this message."
+
+we create a context package:
+
+Current conversation
+
+        +
+
+Recent conversation
+
+        +
+
+Relevant older messages
+
+        +
+
+User's communication style
+
+        +
+
+Contact relationship
+
+        +
+
+Current message
+
+        ↓
+
+       AI
+
+        ↓
+
+Suggested replies
+
+For example:
+
+Rahul:
+
+"Bhai kal aa raha hai na?"
+
+AI:
+
+Suggestion 1:
+
+"Ha bhai, pakka aa raha hu 😂"
+
+Suggestion 2:
+
+"Yes bhai, kal milte 👍"
+
+Suggestion 3:
+
+"Ha re, kal around 7 la yeto."
+
+The system can learn patterns such as:
+
+Hindi/English/Marathi mix
+
+slang
+
+emoji usage
+
+short/long responses
+
+punctuation
+
+common phrases
+
+formal vs informal communication
+
+But I would not send AI-generated messages automatically by default. Show the suggestion and let the user tap Send.
+
+5. Contact intelligence
+
+Your Contacts page:
+
+Contacts
+
+🔎 Search
+
+Rahul
+
+Last chat: Today
+
+Aditya
+
+Last chat: 2 hours ago
+
+Sneha
+
+Last chat: Yesterday
+
+Tap Rahul:
+
+Rahul
+
+Conversation Overview
+
+─────────────────────
+
+Relationship:
+
+Friend
+
+Communication Style:
+
+Casual
+
+Likes
+
+• Cricket
+
+• Gaming
+
+• Travelling
+
+Dislikes
+
+• Early mornings
+
+• Long formal messages
+
+Frequently Discussed
+
+• Gaming
+
+• Work
+
+• Weekend plans
+
+Important Events
+
+🎂 Birthday: 15 September
+
+Recent Topics
+
+• Trip
+
+• New job
+
+• Cricket match
+
+AI Summary
+
+...
+
+The AI should generate this from the user's available conversation data rather than having a huge prompt containing the entire chat history every time.
+
+6. Extraction page
+
+Separate page:
+
+AI Extractions
+
+Today
+
+────────────────
+
+🎂 Birthday
+
+Rahul's birthday — 15 Sep
+
+📅 Meeting
+
+Meeting with Aditya — Monday
+
+💰 Payment
+
+Discussed ₹5,000 payment
+
+✈️ Travel
+
+Trip discussed for October
+
+🎁 Important
+
+Sneha asked about birthday gift
+
+────────────────
+
+[ View Conversation ]
+
+[ Generate Reply ]
+
+Clicking an extraction should take the user to the relevant conversation/message.
+
+7. Backend data isolation
+
+This is extremely important for your requirement.
+
+Suppose:
+
+User A
+
+WhatsApp A
+
+User B
+
+WhatsApp B
+
+Their data must NEVER be mixed.
+
+I would structure it approximately like:
+
+users
+
+ └── user_id
+
+whatsapp_accounts
+
+ ├── id
+
+ ├── user_id
+
+ └── connection information
+
+contacts
+
+ ├── id
+
+ ├── whatsapp_account_id
+
+ └── contact information
+
+conversations
+
+ ├── id
+
+ ├── whatsapp_account_id
+
+ └── contact_id
+
+messages
+
+ ├── id
+
+ ├── conversation_id
+
+ ├── sender_id
+
+ ├── message
+
+ ├── timestamp
+
+ └── metadata
+
+ai_extractions
+
+ ├── id
+
+ ├── whatsapp_account_id
+
+ ├── conversation_id
+
+ └── extraction
+
+ai_reply_suggestions
+
+ ├── id
+
+ ├── conversation_id
+
+ └── suggestion
+
+The critical relationship is:
+
+User
+
+ ↓
+
+Whats

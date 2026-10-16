@@ -1,0 +1,649 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ──────────────────────────────────────────────
+// AUTH & USERS
+// ──────────────────────────────────────────────
+model User {
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
+  authUserId            String                 @unique
+  email                 String                 @unique
+  passwordHash          String?
+  name                  String
+  avatarUrl             String?
+  phone                 String?
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  whatsappAccounts      WhatsAppAccount[]
+  whatsappConnections   WhatsAppConnection[]
+  syncStates            SyncState[]
+  providerEvents        ProviderEvent[]
+  contacts              Contact[]
+  conversations         Conversation[]
+  messages              Message[]
+  messageMedia          MessageMedia[]
+  messageStatuses       MessageStatus[]
+  conversationSummaries ConversationSummary[]
+  contactAIProfiles     ContactAIProfile[]
+  userAIProfile         UserAIProfile?
+  aiExtractions         AIExtraction[]
+  aiExtractionSources   AIExtractionSource[]
+  aiReplySuggestions    AIReplySuggestion[]
+  aiProcessingJobs      AIProcessingJob[]
+  aiTokenUsageLogs      AITokenUsageLog[]
+  notifications         Notification[]
+  userSettings          UserSettings?
+  auditLogs             AuditLog[]
+  lidMappings           LIDMapping[]
+  groupParticipants     GroupParticipant[]
+
+  @@map("users")
+}
+
+// ──────────────────────────────────────────────
+// WHATSAPP ACCOUNTS & CONNECTIONS
+// ──────────────────────────────────────────────
+model WhatsAppAccount {
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String                 @db.ObjectId
+  provider              String                 @default("BAILEYS")
+  providerAccountId     String?
+  phoneNumber           String?
+  displayName           String?
+  profilePhotoUrl       String?
+  status                String                 @default("DISCONNECTED")
+  lastConnectedAt       DateTime?
+  lastDisconnectedAt    DateTime?
+  lastSyncAt            DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connections           WhatsAppConnection[]
+  syncStates            SyncState[]
+  providerEvents        ProviderEvent[]
+  contacts              Contact[]
+  conversations         Conversation[]
+  messages              Message[]
+  messageMedia          MessageMedia[]
+  messageStatuses       MessageStatus[]
+  conversationSummaries ConversationSummary[]
+  contactAIProfiles     ContactAIProfile[]
+  aiExtractions         AIExtraction[]
+  aiExtractionSources   AIExtractionSource[]
+  aiReplySuggestions    AIReplySuggestion[]
+  aiProcessingJobs      AIProcessingJob[]
+  aiTokenUsageLogs      AITokenUsageLog[]
+  auditLogs             AuditLog[]
+  lidMappings           LIDMapping[]
+  groupParticipants     GroupParticipant[]
+
+  @@index([userId])
+  @@map("whatsapp_accounts")
+}
+
+model WhatsAppConnection {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  connectionStatus     String                 @default("DISCONNECTED")
+  connectionType       String                 @default("QR")
+  providerSessionId    String?
+  encryptedSessionData String?
+  isActive             Boolean                @default(true)
+  qrCreatedAt          DateTime?
+  connectedAt          DateTime?
+  disconnectedAt       DateTime?
+  lastHeartbeatAt      DateTime?
+  lastError            String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([whatsappAccountId, isActive])
+  @@map("whatsapp_connections")
+}
+
+model SyncState {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  syncType             String                 // CONTACTS, CHATS, MESSAGES, MEDIA
+  cursor               String?
+  status               String                 @default("PENDING")
+  totalItems           Int                    @default(0)
+  processedItems       Int                    @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  lastError            String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, whatsappAccountId])
+  @@map("sync_states")
+}
+
+model ProviderEvent {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  externalEventId      String
+  eventType            String
+  payloadHash          String?
+  processed            Boolean                @default(false)
+  receivedAt           DateTime               @default(now())
+  processedAt          DateTime?
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([whatsappAccountId, externalEventId])
+  @@index([userId])
+  @@index([whatsappAccountId])
+  @@map("provider_events")
+}
+
+// ──────────────────────────────────────────────
+// MESSAGING & CHATS
+// ──────────────────────────────────────────────
+model LIDMapping {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  lid                  String
+  phoneJid             String
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([whatsappAccountId, lid])
+  @@index([userId, whatsappAccountId])
+  @@map("lid_mappings")
+}
+
+model GroupParticipant {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  conversationId       String                 @db.ObjectId
+  contactId            String                 @db.ObjectId
+  role                 String                 @default("MEMBER") // ADMIN, MEMBER
+  joinedAt             DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversation         Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact              Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, contactId])
+  @@index([userId, whatsappAccountId])
+  @@map("group_participants")
+}
+
+model Contact {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  externalContactId    String
+  phoneNumber          String?
+  displayName          String
+  pushName             String?
+  verifiedName         String?
+  lid                  String?
+  normalizedName       String?
+  profilePhotoUrl      String?
+  about                String?
+  isBusiness           Boolean                @default(false)
+  isGroup              Boolean                @default(false)
+  isSavedContact       Boolean                @default(false)
+  lastSeenAt           DateTime?
+  lastSyncedAt         DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversations        Conversation[]
+  sentMessages         Message[]              @relation("SenderContactRelation")
+  groupParticipants    GroupParticipant[]
+  aiExtractions        AIExtraction[]
+  aiProfile            ContactAIProfile?
+
+  @@unique([whatsappAccountId, externalContactId])
+  @@index([userId])
+  @@index([whatsappAccountId])
+  @@map("contacts")
+}
+
+model Conversation {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  contactId            String?                @db.ObjectId
+  externalChatId       String
+  chatType             String                 @default("INDIVIDUAL") // INDIVIDUAL, GROUP, CHANNEL, SELF
+  title                String?
+  avatarUrl            String?
+  lastMessageId        String?
+  lastMessageText      String?
+  lastMessageAt        DateTime?
+  lastMessageSenderId  String?
+  unreadCount          Int                    @default(0)
+  isArchived           Boolean                @default(false)
+  isMuted              Boolean                @default(false)
+  isPinned             Boolean                @default(false)
+  pinnedAt             DateTime?
+  isSelfChat           Boolean                @default(false)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  contact              Contact?               @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  participants         GroupParticipant[]
+  messages             Message[]
+  conversationSummary  ConversationSummary?
+  aiExtractions        AIExtraction[]
+  aiReplySuggestions   AIReplySuggestion[]
+
+  @@unique([whatsappAccountId, externalChatId])
+  @@index([userId])
+  @@index([whatsappAccountId, lastMessageAt])
+  @@map("conversations")
+}
+
+model Message {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  conversationId       String                 @db.ObjectId
+  externalMessageId    String
+  externalSenderId     String?
+  senderContactId      String?                @db.ObjectId
+  senderType           String                 // ME, CONTACT
+  messageType          String                 @default("TEXT")
+  textContent          String?
+  replyToMessageId     String?
+  quotedMessageId      String?
+  isFromMe             Boolean
+  syncStatus           String                 @default("PROCESSED")
+  aiStatus             String                 @default("NOT_PROCESSED")
+  currentStatus        String                 @default("RECEIVED")
+  messageTimestamp     DateTime               @default(now())
+  metadata             Json?
+  reactions            Json?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversation         Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderContact        Contact?               @relation("SenderContactRelation", fields: [senderContactId], references: [id], onDelete: SetNull)
+  media                MessageMedia[]
+  statuses             MessageStatus[]
+  aiExtractions        AIExtraction[]
+  aiExtractionSources  AIExtractionSource[]
+  replySuggestionsAsSource AIReplySuggestion[] @relation("SourceMessageSuggestions")
+
+  @@unique([whatsappAccountId, externalMessageId])
+  @@index([userId])
+  @@index([conversationId, messageTimestamp])
+  @@index([whatsappAccountId, messageTimestamp])
+  @@map("messages")
+}
+
+model MessageStatus {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  messageId            String                 @db.ObjectId
+  status               String
+  timestamp            DateTime               @default(now())
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  message              Message                @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, status])
+  @@index([userId])
+  @@index([messageId])
+  @@map("message_statuses")
+}
+
+model MessageMedia {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  messageId            String                 @db.ObjectId
+  storageBucket        String                 @default("whatsapp-media")
+  storagePath          String
+  mediaType            String
+  mimeType             String?
+  fileSize             Int?
+  width                Int?
+  height               Int?
+  duration             Int?
+  encryptionMetadata   Json?
+  createdAt            DateTime               @default(now())
+  expiresAt            DateTime?
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  message              Message                @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("message_media")
+}
+
+// ──────────────────────────────────────────────
+// AI INTELLIGENCE & QUEUE
+// ──────────────────────────────────────────────
+model ConversationSummary {
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String                 @db.ObjectId
+  whatsappAccountId     String                 @db.ObjectId
+  conversationId        String                 @unique @db.ObjectId
+  summary               String
+  recentTopics          Json?
+  openQuestions         Json?
+  importantContext      String?
+  messageCount          Int                    @default(0)
+  lastAnalyzedMessageId String?
+  lastAnalyzedAt        DateTime?
+  aiModel               String                 @default("gemini-2.5-flash")
+  pipelineVersion       String                 @default("2026-09-v1")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount       WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversation          Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("conversation_summaries")
+}
+
+model ContactAIProfile {
+  id                    String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String                 @db.ObjectId
+  whatsappAccountId     String                 @db.ObjectId
+  contactId             String                 @unique @db.ObjectId
+  summary               String
+  likes                 Json?
+  dislikes              Json?
+  interests             Json?
+  communicationStyle    Json?
+  frequentlyDiscussedTopics Json?
+  importantEvents       Json?
+  relationshipContext   String?
+  confidence            Float                  @default(0.9)
+  sourceMessageCount    Int                    @default(0)
+  lastAnalyzedMessageId String?
+  lastAnalyzedAt        DateTime?
+  aiModel               String                 @default("gemini-2.5-flash")
+  version               String                 @default("v1.0")
+  generatedAt           DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount       WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  contact               Contact                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([whatsappAccountId])
+  @@map("contact_ai_profiles")
+}
+
+model UserAIProfile {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @unique @db.ObjectId
+  languagePreferences  Json?
+  tone                 String?                @default("Casual")
+  emojiUsage           String?                @default("High")
+  commonPhrases        Json?
+  averageMessageLength String?                @default("Short")
+  communicationStyle   Json?
+  profileVersion       String                 @default("v1.0")
+  lastAnalyzedAt       DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_ai_profiles")
+}
+
+model AIExtraction {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  conversationId       String?                @db.ObjectId
+  contactId            String?                @db.ObjectId
+  messageId            String?                @db.ObjectId
+  extractionType       String
+  title                String
+  summary              String
+  structuredData       Json?
+  importanceScore      Float                  @default(0.5)
+  confidenceScore      Float                  @default(0.9)
+  eventDate            DateTime?
+  eventEndDate         DateTime?
+  // ACTIVE (new), REVIEWED, IN_PROGRESS, COMPLETED, DISMISSED, CANCELLED (legacy: RESOLVED, ARCHIVED)
+  status               String                 @default("ACTIVE")
+  // Stable identity of one item inside its source message, so retries never duplicate it
+  // and one message can still hold many distinct items.
+  itemKey              String?
+  description          String?
+  priority             String                 @default("NORMAL")
+  actionRequired       Boolean                @default(false)
+  supportingText       String?
+  originalDateText     String?
+  timezone             String?
+  notes                String?
+  extractionVersion    String                 @default("v2")
+  // Append-only list of changes (reschedule, cancel, complete, user edits)
+  history              Json?
+  aiModel              String                 @default("gemini-2.5-flash")
+  promptVersion        String                 @default("v1.0")
+  pipelineVersion      String                 @default("2026-09-v1")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversation         Conversation?          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact              Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  message              Message?               @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  sources              AIExtractionSource[]
+
+  @@index([userId])
+  @@index([whatsappAccountId, extractionType])
+  @@index([whatsappAccountId, eventDate])
+  // One saved item per (message, excerpt identity). Rows must always carry an itemKey.
+  @@unique([messageId, itemKey])
+  @@index([userId, status, createdAt])
+  @@index([conversationId, status])
+  @@map("ai_extractions")
+}
+
+model AIExtractionSource {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  extractionId         String                 @db.ObjectId
+  messageId            String                 @db.ObjectId
+  relevanceScore       Float                  @default(1.0)
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  extraction           AIExtraction           @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+  message              Message                @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([extractionId, messageId])
+  @@index([userId])
+  @@map("ai_extraction_sources")
+}
+
+model AIReplySuggestion {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  conversationId       String                 @db.ObjectId
+  sourceMessageId      String                 @db.ObjectId
+  suggestion           String
+  tone                 String                 @default("casual")
+  language             String?                @default("en")
+  sourceMessagePreview String?
+  style                String?
+  confidence           Float                  @default(0.9)
+  contextSummary       String?
+  isUsed               Boolean                @default(false)
+  usedAt               DateTime?
+  expiresAt            DateTime?
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+  conversation         Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sourceMessage        Message                @relation("SourceMessageSuggestions", fields: [sourceMessageId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([conversationId])
+  @@map("ai_reply_suggestions")
+}
+
+model AIProcessingJob {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  idempotencyKey       String?                @unique
+  jobType              String
+  entityType           String
+  entityId             String
+  status               String                 @default("QUEUED")
+  priority             Int                    @default(1)
+  attempts             Int                    @default(0)
+  maxAttempts          Int                    @default(3)
+  nextRetryAt          DateTime?
+  backoffDelayMs       Int                    @default(2000)
+  errorMessage         String?
+  errorCategory        String?                // PROVIDER_TIMEOUT, RATE_LIMIT, PROVIDER_ERROR, INVALID_RESPONSE, DATABASE, UNKNOWN
+  failedStage          String?                // LOAD, EXTRACTION, PERSISTENCE, REPLY_SUGGESTION
+  lastAttemptAt        DateTime?
+  inputTokens          Int                    @default(0)
+  outputTokens         Int                    @default(0)
+  totalTokens          Int                    @default(0)
+  model                String?                @default("gemini-2.5-flash")
+  pipelineVersion      String                 @default("2026-09-v1")
+  scheduledAt          DateTime               @default(now())
+  startedAt            DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status, priority])
+  @@map("ai_processing_jobs")
+}
+
+model AITokenUsageLog {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String                 @db.ObjectId
+  jobId                String?                @db.ObjectId
+  processingType       String                 @default("REALTIME_ANALYSIS")
+  model                String                 @default("gemini-2.5-flash")
+  inputTokens          Int                    @default(0)
+  outputTokens         Int                    @default(0)
+  totalTokens          Int                    @default(0)
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount        @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([whatsappAccountId, createdAt])
+  @@map("ai_token_usage_logs")
+}
+
+// ──────────────────────────────────────────────
+// APP SETTINGS, NOTIFICATIONS & AUDIT
+// ──────────────────────────────────────────────
+model Notification {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  type                 String
+  title                String
+  body                 String
+  priority             String                 @default("NORMAL")
+  relatedExtractionId  String?
+  isRead               Boolean                @default(false)
+  expiresAt            DateTime?
+  createdAt            DateTime               @default(now())
+  readAt               DateTime?
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model UserSettings {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @unique @db.ObjectId
+  retentionDays        Int                    @default(3)
+  autoAIAnalysis       Boolean                @default(true)
+  realtimeAI           Boolean                @default(true)
+  aiReplySuggestions   Boolean                @default(true)
+  aiExtractions        Boolean                @default(true)
+  dailyTokenLimit      Int                    @default(100000)
+  monthlyTokenLimit    Int                    @default(3000000)
+  usedTokensToday      Int                    @default(0)
+  usedTokensThisMonth  Int                    @default(0)
+  lastTokenResetDate   DateTime?              @default(now())
+  notificationsEnabled Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model AuditLog {
+  id                   String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String                 @db.ObjectId
+  whatsappAccountId    String?                @db.ObjectId
+  action               String
+  resourceType         String?
+  resourceId           String?
+  metadata             Json?
+  createdAt            DateTime               @default(now())
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappAccount      WhatsAppAccount?       @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}

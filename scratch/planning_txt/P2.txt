@@ -1,0 +1,1363 @@
+Yes. For your app, I recommend PostgreSQL + Redis + WebSocket + REST APIs. Keep WhatsApp data strictly tenant/user isolated.
+
+1. Database structure
+
+The core relationship should be:
+
+users
+
+  │
+
+  └── whatsapp_accounts
+
+          │
+
+          ├── contacts
+
+          │      └── conversations
+
+          │              └── messages
+
+          │
+
+          ├── ai_extractions
+
+          └── ai_reply_suggestions
+
+users
+
+Application account, not WhatsApp contact data.
+
+Column
+
+Type
+
+Notes
+
+id
+
+UUID
+
+PK
+
+email
+
+VARCHAR
+
+Unique
+
+password_hash
+
+TEXT
+
+If using email/password
+
+name
+
+VARCHAR
+
+Profile name
+
+avatar_url
+
+TEXT
+
+Optional
+
+phone
+
+VARCHAR
+
+Optional
+
+is_active
+
+BOOLEAN
+
+Default true
+
+created_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+whatsapp_accounts
+
+One app user can potentially have one or more WhatsApp connections.
+
+Column
+
+Type
+
+Notes
+
+id
+
+UUID
+
+PK
+
+user_id
+
+UUID
+
+FK → users
+
+whatsapp_phone
+
+VARCHAR
+
+Connected WhatsApp number
+
+whatsapp_name
+
+VARCHAR
+
+Profile name
+
+profile_photo_url
+
+TEXT
+
+connection_status
+
+VARCHAR
+
+connected/disconnected/connecting
+
+provider_account_id
+
+TEXT
+
+WhatsApp/provider ID
+
+encrypted_credentials
+
+TEXT
+
+Encrypted if applicable
+
+last_sync_at
+
+TIMESTAMP
+
+created_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+Important: never use only contact_id or phone number to identify ownership. Every WhatsApp object should ultimately belong to a whatsapp_account_id.
+
+contacts
+
+contacts
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+whatsapp_contact_id
+
+VARCHAR
+
+phone_number
+
+VARCHAR
+
+display_name
+
+VARCHAR
+
+profile_photo_url
+
+TEXT
+
+about
+
+TEXT
+
+is_business
+
+BOOLEAN
+
+last_seen_at
+
+TIMESTAMP
+
+created_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+Add:
+
+UNIQUE(whatsapp_account_id, whatsapp_contact_id)
+
+This prevents User A's Rahul and User B's Rahul from becoming the same database contact.
+
+conversations
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+contact_id
+
+UUID FK
+
+whatsapp_chat_id
+
+VARCHAR
+
+chat_type
+
+VARCHAR
+
+last_message_id
+
+UUID
+
+last_message_at
+
+TIMESTAMP
+
+created_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+Constraint:
+
+UNIQUE(whatsapp_account_id, whatsapp_chat_id)
+
+messages
+
+This is your largest table.
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+conversation_id
+
+UUID FK
+
+whatsapp_message_id
+
+VARCHAR
+
+sender_contact_id
+
+UUID nullable
+
+sender_type
+
+VARCHAR
+
+message_type
+
+VARCHAR
+
+text_content
+
+TEXT
+
+media_url
+
+TEXT nullable
+
+media_type
+
+VARCHAR nullable
+
+reply_to_message_id
+
+UUID nullable
+
+is_from_me
+
+BOOLEAN
+
+message_timestamp
+
+TIMESTAMP
+
+metadata
+
+JSONB
+
+created_at
+
+TIMESTAMP
+
+Important indexes:
+
+INDEX(conversation_id, message_timestamp)
+
+INDEX(whatsapp_account_id, message_timestamp)
+
+INDEX(whatsapp_message_id)
+
+And:
+
+UNIQUE(whatsapp_account_id, whatsapp_message_id)
+
+This prevents duplicate messages during synchronization.
+
+2. AI tables
+
+Don't put AI information directly into messages.
+
+Keep AI data separate.
+
+ai_extractions
+
+ai_extractions
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+conversation_id
+
+UUID nullable
+
+contact_id
+
+UUID nullable
+
+message_id
+
+UUID nullable
+
+extraction_type
+
+VARCHAR
+
+title
+
+VARCHAR
+
+summary
+
+TEXT
+
+extracted_data
+
+JSONB
+
+importance_score
+
+DECIMAL
+
+confidence_score
+
+DECIMAL
+
+event_date
+
+TIMESTAMP nullable
+
+status
+
+VARCHAR
+
+ai_model
+
+VARCHAR
+
+created_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+Examples:
+
+{
+
+  "type": "birthday",
+
+  "person": "Rahul",
+
+  "date": "2026-09-15",
+
+  "confidence": 0.96
+
+}
+
+Other types:
+
+birthday
+
+birthday_wish
+
+meeting
+
+appointment
+
+task
+
+payment
+
+travel
+
+important_event
+
+reminder
+
+work_event
+
+personal_event
+
+contact_ai_profiles
+
+For your "likes/dislikes/what we talked about" page.
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+contact_id
+
+UUID FK
+
+summary
+
+TEXT
+
+likes
+
+JSONB
+
+dislikes
+
+JSONB
+
+interests
+
+JSONB
+
+communication_style
+
+JSONB
+
+frequently_discussed_topics
+
+JSONB
+
+important_people
+
+JSONB
+
+important_events
+
+JSONB
+
+relationship_context
+
+TEXT
+
+confidence
+
+DECIMAL
+
+source_message_count
+
+INTEGER
+
+generated_at
+
+TIMESTAMP
+
+updated_at
+
+TIMESTAMP
+
+Example:
+
+{
+
+  "likes": [
+
+    "cricket",
+
+    "gaming",
+
+    "travel"
+
+  ],
+
+  "dislikes": [
+
+    "early meetings"
+
+  ],
+
+  "communication_style": {
+
+    "language": "Hinglish",
+
+    "tone": "casual",
+
+    "emoji_usage": "high"
+
+  }
+
+}
+
+ai_reply_suggestions
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+conversation_id
+
+UUID FK
+
+message_id
+
+UUID FK
+
+suggestion
+
+TEXT
+
+tone
+
+VARCHAR
+
+confidence
+
+DECIMAL
+
+context_summary
+
+TEXT
+
+ai_model
+
+VARCHAR
+
+is_used
+
+BOOLEAN
+
+created_at
+
+TIMESTAMP
+
+For example:
+
+Incoming:
+
+"Bhai kal aa raha hai?"
+
+Suggestions:
+
+"Ha bhai pakka 😂"
+
+"Yes bro, kal milte."
+
+"Ha re, 7 la yeto."
+
+3. AI processing tables
+
+For large-scale processing, add:
+
+ai_processing_jobs
+
+Column
+
+Type
+
+id
+
+UUID PK
+
+whatsapp_account_id
+
+UUID FK
+
+job_type
+
+VARCHAR
+
+entity_id
+
+UUID
+
+status
+
+VARCHAR
+
+attempts
+
+INTEGER
+
+error_message
+
+TEXT
+
+scheduled_at
+
+TIMESTAMP
+
+started_at
+
+TIMESTAMP
+
+completed_at
+
+TIMESTAMP
+
+created_at
+
+TIMESTAMP
+
+Job types:
+
+MESSAGE_ANALYSIS
+
+CONVERSATION_SUMMARY
+
+CONTACT_PROFILE
+
+EVENT_EXTRACTION
+
+REPLY_GENERATION
+
+Use Redis/BullMQ for the actual queue.
+
+4. Message retention
+
+I wouldn't delete everything older than 15 days immediately.
+
+Better architecture:
+
+0–15 days
+
+    ↓
+
+Full messages + media metadata
+
+    ↓
+
+AI processing
+
+    ↓
+
+Important information extracted
+
+    ↓
+
+15+ days
+
+    ↓
+
+Delete raw message/media data
+
+    ↓
+
+Keep AI summaries/extractions
+
+So you might have:
+
+Raw messages       → 15 days
+
+Media              → 7–15 days
+
+Conversation summary → long-term
+
+AI extractions     → long-term
+
+Contact profile    → long-term
+
+But give the user settings:
+
+Message retention
+
+○ 7 days
+
+● 15 days
+
+○ 30 days
+
+○ 90 days
+
+○ Forever
+
+For privacy, I'd make 15 days the default.
+
+5. API architecture
+
+I would use:
+
+/api/v1
+
+with JWT authentication.
+
+Authentication
+
+Register
+
+POST /api/v1/auth/register
+
+{
+
+  "name": "Vaibhav",
+
+  "email": "user@example.com",
+
+  "password": "********"
+
+}
+
+Login
+
+POST /api/v1/auth/login
+
+Response:
+
+{
+
+  "accessToken": "...",
+
+  "refreshToken": "...",
+
+  "user": {
+
+    "id": "...",
+
+    "name": "Vaibhav"
+
+  }
+
+}
+
+Current user
+
+GET /api/v1/auth/me
+
+6. WhatsApp APIs
+
+Start connection
+
+POST /api/v1/whatsapp/connect
+
+Response:
+
+{
+
+  "connectionId": "...",
+
+  "status": "connecting"
+
+}
+
+QR
+
+GET /api/v1/whatsapp/connect/qr
+
+Connection status
+
+GET /api/v1/whatsapp/status
+
+Response:
+
+{
+
+  "status": "connected",
+
+  "phone": "+91XXXXXXXXXX",
+
+  "name": "Vaibhav"
+
+}
+
+Disconnect
+
+POST /api/v1/whatsapp/disconnect
+
+7. Contact APIs
+
+Get contacts
+
+GET /api/v1/contacts
+
+Support:
+
+GET /api/v1/contacts?search=rahul
+
+Contact details
+
+GET /api/v1/contacts/:contactId
+
+AI profile
+
+GET /api/v1/contacts/:contactId/ai-profile
+
+Contact extractions
+
+GET /api/v1/contacts/:contactId/extractions
+
+8. Chat APIs
+
+Conversations
+
+GET /api/v1/chats
+
+Single chat
+
+GET /api/v1/chats/:chatId
+
+Messages
+
+GET /api/v1/chats/:chatId/messages
+
+Pagination:
+
+GET /api/v1/chats/:chatId/messages?limit=50&before=<messageId>
+
+Don't return thousands of messages at once.
+
+9. Send message
+
+POST /api/v1/chats/:chatId/messages
+
+{
+
+  "text": "Ha bhai kal milte!"
+
+}
+
+Backend:
+
+React Native
+
+      ↓
+
+POST /messages
+
+      ↓
+
+Validate authenticated user
+
+      ↓
+
+Verify chat belongs to user's WhatsApp account
+
+      ↓
+
+WhatsApp provider
+
+      ↓
+
+WhatsApp
+
+      ↓
+
+Message event
+
+      ↓
+
+Database
+
+      ↓
+
+WebSocket
+
+      ↓
+
+React Native
+
+This means the sent message also appears in the local chat in real time.
+
+10. AI APIs
+
+Dashboard insights
+
+GET /api/v1/ai/dashboard
+
+Returns:
+
+{
+
+  "importantEvents": [],
+
+  "birthdays": [],
+
+  "importantMessages": [],
+
+  "suggestedReplies": []
+
+}
+
+Analyze conversation
+
+POST /api/v1/ai/chats/:chatId/analyze
+
+Get conversation analysis
+
+GET /api/v1/ai/chats/:chatId/analysis
+
+Generate reply
+
+POST /api/v1/ai/chats/:chatId/reply-suggestions
+
+{
+
+  "messageId": "..."
+
+}
+
+Response:
+
+{
+
+  "suggestions": [
+
+    {
+
+      "text": "Ha bhai pakka 😂",
+
+      "tone": "casual"
+
+    },
+
+    {
+
+      "text": "Yes bro, kal milte.",
+
+      "tone": "normal"
+
+    },
+
+    {
+
+      "text": "Ha re, 7 la yeto.",
+
+      "tone": "personal"
+
+    }
+
+  ]
+
+}
+
+11. Extractions API
+
+GET /api/v1/extractions
+
+Filters:
+
+GET /api/v1/extractions?type=birthday
+
+GET /api/v1/extractions?importance=high
+
+GET /api/v1/extractions?from=2026-09-01&to=2026-09-11
+
+12. Real-time WebSocket
+
+For the actual WhatsApp experience, REST alone isn't enough.
+
+Use:
+
+Socket.IO
+
+or native WebSocket.
+
+Events:
+
+message:new
+
+message:updated
+
+message:deleted
+
+message:status
+
+chat:updated
+
+contact:updated
+
+whatsapp:connected
+
+whatsapp:disconnected
+
+ai:extraction
+
+ai:reply_ready
+
+Example:
+
+WhatsApp → Backend
+
+message:new
+
+       ↓
+
+DB
+
+       ↓
+
+Socket.IO
+
+       ↓
+
+Mobile
+
+message:new
+
+{
+
+   chatId: "...",
+
+   message: {
+
+      id: "...",
+
+      text: "Hello",
+
+      sender: "...",
+
+      timestamp: "..."
+
+   }
+
+}
+
+13. Most important security rule
+
+Every API request must resolve:
+
+JWT
+
+ ↓
+
+user_id
+
+ ↓
+
+whatsapp_account_id
+
+ ↓
+
+resource
+
+Never do:
+
+SELECT * FROM messages WHERE conversation_id = ?
+
+by itself.
+
+Instead:
+
+SELECT m.*
+
+FROM messages m
+
+JOIN conversations c
+
+  ON c.id = m.conversation_id
+
+WHERE m.conversation_id = $1
+
+AND c.whatsapp_account_id = $2;
+
+This is what prevents:
+
+User A
+
+❌ seeing User B's messages
+
+Even if someone manipulates an ID.
+
+14. Recommended backend
+
+I'd use:
+
+Backend:
+
+Node.js
+
+NestJS
+
+Database:
+
+PostgreSQL
+
+ORM:
+
+Prisma
+
+Realtime:
+
+Socket.IO
+
+Queue:
+
+BullMQ
+
+Cache:
+
+Redis
+
+AI:
+
+OpenAI / Gemini / Groq
+
+through a single AI service abstraction
+
+Storage:
+
+S3-compatible object storage
+
+Authentication:
+
+JWT + refresh tokens
+
+Validation:
+
+Zod / class-validator
+
+API documentation:
+
+Swagger/OpenAPI
+
+Project structure:
+
+backend/
+
+│
+
+├── src/
+
+│   ├── auth/
+
+│   ├── users/
+
+│   ├── whatsapp/
+
+│   ├── contacts/
+
+│   ├── chats/
+
+│   ├── messages/
+
+│   ├── realtime/
+
+│   ├── ai/
+
+│   │   ├── extraction/
+
+│   │   ├── reply/
+
+│   │   ├── profiles/
+
+│   │   └── summaries/
+
+│   ├── jobs/
+
+│   ├── storage/
+
+│   └── common/
+
+│
+
+├── prisma/
+
+│   └── schema.prisma
+
+│
+
+├── .env
+
+├── .env.example
+
+└── package.json
+
+And frontend:
+
+mobile/
+
+│
+
+├── src/
+
+│   ├── screens/
+
+│   │   ├── ConnectWhatsApp/
+
+│   │   ├── Dashboard/
+
+│   │   ├── Chats/
+
+│   │   ├── Contacts/
+
+│   │   ├── ContactDetails/
+
+│   │   ├── Extractions/
+
+│   │   └── Profile/
+
+│   │
+
+│   ├── components/
+
+│   ├── navigation/
+
+│   ├── services/
+
+│   │   ├── api/
+
+│   │   └── socket/
+
+│   ├── store/
+
+│   ├── hooks/
+
+│   └── theme/
+
+│
+
+├── .env
+
+└── .env.example
+
+One change I'd strongly recommend
+
+Don't build the AI as:
+
+Every message → send entire chat → AI
+
+That becomes expensive and slow.
+
+Instead:
+
+New message
+
+     ↓
+
+Queue
+
+     ↓
+
+Lightweight classification
+
+     ↓
+
+Is it important?
+
+     ├── No → store
+
+     │
+
+     └── Yes
+
+          ↓
+
+      extraction
+
+          ↓
+
+      update contact profile
+
+          ↓
+
+      update conversation summary
+
+          ↓
+
+      generate reply context
+
+For replies:
+
+Last 20–50 messages
+
+        +
+
+conversation summary
+
+        +
+
+contact AI profile
+
+        +
+
+relevant extracted memories
+
+        ↓
+
+      AI
+
+        ↓
+
+3 reply suggestions
+
+That gives you much better cost, speed, privacy, and scalability than sending the entire chat history to the AI every time.
+
+If you're going to actually start coding this, the next thing I would create is the complete PostgreSQL/Prisma schema + all NestJS API routes/controllers/services + React Native API/socket structure, rather than just a high-level design.
