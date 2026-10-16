@@ -65,6 +65,7 @@ function makeDb(contactRows: any[], conversations: any[], mappings: any[] = []) 
     conversations,
     writes: 0,
     whatsAppAccount: { findFirst: async () => ({ id: ACCOUNT, userId: USER }) },
+    message: { findFirst: async () => null },
     contact: {
       findMany: async () => contactRows.map((c) => ({ ...c })),
       count: async () => contactRows.length,

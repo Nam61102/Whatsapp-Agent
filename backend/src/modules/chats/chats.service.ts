@@ -76,9 +76,40 @@ export class ChatsService {
       skip: offset,
     });
 
+    // The preview and time come from the real latest message, so the list always matches what is
+    // inside the chat. The copy saved on the conversation can lag behind (history sync, retention).
+    const latest = await Promise.all(
+      conversations.map((c) =>
+        this.prisma.message.findFirst({
+          where: { conversationId: c.id },
+          orderBy: { messageTimestamp: 'desc' },
+          select: {
+            textContent: true,
+            messageType: true,
+            messageTimestamp: true,
+            isFromMe: true,
+            metadata: true,
+            senderContact: { select: { displayName: true, pushName: true } },
+          },
+        })
+      )
+    );
+    const withLatest = conversations.map((c, i) => {
+      const m = latest[i];
+      if (!m) return c;
+      const isGroup = c.chatType === 'GROUP' || c.externalChatId?.endsWith('@g.us');
+      const who = (m.metadata as any)?.senderName || m.senderContact?.displayName || m.senderContact?.pushName;
+      const body = m.textContent && m.textContent.trim() ? m.textContent : '[Message]';
+      return {
+        ...c,
+        lastMessageText: isGroup && !m.isFromMe && who ? `${who}: ${body}` : body,
+        lastMessageAt: m.messageTimestamp,
+      };
+    });
+
     const total = await this.prisma.conversation.count({ where: whereClause });
 
-    return { conversations, total, limit, offset };
+    return { conversations: withLatest, total, limit, offset };
   }
 
   async getChatById(userId: string, chatId: string) {

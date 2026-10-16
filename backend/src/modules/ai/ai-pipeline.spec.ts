@@ -618,7 +618,7 @@ describe('Reply Needed is only for important messages', () => {
   });
 
   it('an important item without anything to answer gets no reply', async () => {
-    const info = { items: [{ ...meeting.items[0], type: 'INSTRUCTION', title: 'Note', supportingText: 'meeting tomorrow at 5pm' }], updates: [] };
+    const info = { items: [{ ...meeting.items[0], type: 'CONTACT', title: 'Note', supportingText: 'meeting tomorrow at 5pm' }], updates: [] };
     const { receive, prisma } = setup(replyingModel(info));
     prisma.db.settings.aiReplySuggestions = true;
     const created: any[] = [];
@@ -691,7 +691,7 @@ describe('replying in the chat closes the cards it answers', () => {
 
   it('leaves information-only items and other chats alone', async () => {
     const { ai, rows, add } = world();
-    add('new1', 'INSTRUCTION');
+    add('new1', 'PREFERENCE');
     add('new1', 'CONTACT');
     add('new2', 'MEETING', { conversationId: 'other-chat' });
     expect(await ai.resolveRepliedItems('u1', 'c1', T(30))).toBe(0);

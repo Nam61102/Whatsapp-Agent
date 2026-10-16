@@ -60,7 +60,9 @@ export const WISH_TYPES: ExtractionType[] = ['BIRTHDAY', 'WISH'];
 /** Types where the user is normally expected to answer or act; these also get a suggested reply. */
 export const ACK_TYPES: ExtractionType[] = [
   'MEETING', 'APPOINTMENT', 'TASK', 'QUESTION', 'FOLLOW_UP', 'DEADLINE', 'PAYMENT', 'INVOICE',
-  'COMPLAINT', 'URGENT', 'APPROVAL', 'INTERVIEW', 'REQUIREMENT', 'LEAD', 'NEGOTIATION',
+  'ORDER', 'REMINDER', 'COMPLAINT', 'URGENT', 'APPROVAL', 'INTERVIEW', 'REQUIREMENT', 'LEAD',
+  'NEGOTIATION', 'PROJECT_UPDATE', 'CHANGE', 'INSTRUCTION', 'DOCUMENT', 'DECISION', 'TRAVEL',
+  'IMPORTANT_EVENT', 'BUSINESS', 'PENDING',
 ];
 
 /** A summary only makes sense for a long message; short ones are already their own summary. */

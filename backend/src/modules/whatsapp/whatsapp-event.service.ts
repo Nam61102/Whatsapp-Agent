@@ -444,7 +444,26 @@ export class WhatsAppEventService {
     }
   }
 
-  async handleIncomingMessage(
+  /** Live messages being saved right now. Bulk history sync waits for these to finish first. */
+  private liveInFlight = 0;
+
+  /** New messages always go first: they are saved and broadcast before any old history. */
+  async handleIncomingMessage(...args: Parameters<WhatsAppEventService['processIncomingMessage']>) {
+    this.liveInFlight++;
+    try {
+      return await this.processIncomingMessage(...args);
+    } finally {
+      this.liveInFlight--;
+    }
+  }
+
+  private async waitForLiveMessages() {
+    // Let the event loop breathe, and hold history back (at most 3 s) while a live message is being saved.
+    await new Promise((r) => setImmediate(r));
+    for (let i = 0; i < 30 && this.liveInFlight > 0; i++) await new Promise((r) => setTimeout(r, 100));
+  }
+
+  async processIncomingMessage(
     userId: string,
     whatsappAccountId: string,
     payload: {
@@ -1404,6 +1423,7 @@ export class WhatsAppEventService {
     // Newest messages are saved first, in slices, so chats fill in from latest to oldest.
     const SLICE = 500;
     for (let i = 0; i < validMessages.length; i += SLICE) {
+      await this.waitForLiveMessages();
       try {
         messagesProcessed += await this.bulkIngestHistoryMessages(
           userId,

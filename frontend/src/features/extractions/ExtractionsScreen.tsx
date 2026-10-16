@@ -21,6 +21,7 @@ import { IconText } from '../../shared/components/IconText';
 import { Ionicons } from '@expo/vector-icons';
 import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
+import { formatDueDate } from '../../shared/utils/dates';
 
 const CATEGORIES = [
   { key: 'ALL', label: 'All', icon: '⚡' },
@@ -542,7 +543,7 @@ export const ExtractionsScreen = ({ navigation }: any) => {
             <Text style={styles.timeText}>
               {item.timeAgo ||
                 (item.eventDate
-                  ? new Date(item.eventDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                  ? formatDueDate(item.eventDate)
                   : 'Recent')}
             </Text>
           </View>
@@ -1038,21 +1039,21 @@ const styles = StyleSheet.create({
   senderPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5F2',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#CCEBE5',
+    borderColor: '#E2E8F0',
   },
   groupPill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
     borderColor: '#E2E8F0',
   },
   senderPillText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#075E54',
+    color: '#1E293B',
   },
   title: {
     fontSize: 16,

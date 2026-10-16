@@ -190,3 +190,24 @@ describe('casual call requests are not saved as tasks', () => {
     expect((await run2(text, task(text))).items).toHaveLength(1);
   });
 });
+
+describe('relative dates just after midnight', () => {
+  const promptFor = async (sentAt: string) => {
+    let prompt = '';
+    const svc: any = Object.create(AIService.prototype);
+    svc.logger = { warn: () => {}, error: () => {} };
+    svc.callGeminiWithTokens = async (p: string) => ((prompt = p), { text: '{"items":[],"updates":[]}', inputTokens: 1, outputTokens: 1 });
+    await svc.extractItemsWithTokens({ messageText: 'your order will reach tomorrow', senderName: 'Amit', currentUserName: 'Vaibhav', messageTimestamp: new Date(sentAt), chatKind: 'direct' });
+    return prompt;
+  };
+  it('at 12:24 AM India time tomorrow is counted from the previous day', async () => {
+    const p = await promptFor('2026-10-16T18:54:14Z'); // 00:24 on 17 Oct in India
+    expect(p).toContain('just after midnight');
+    expect(p).toContain('ONLY from 2026-10-16');
+  });
+  it('during the day the sent day is used as is', async () => {
+    const p = await promptFor('2026-10-16T08:00:00Z'); // 13:30 on 16 Oct
+    expect(p).not.toContain('just after midnight');
+    expect(p).toContain('ONLY from 2026-10-16');
+  });
+});

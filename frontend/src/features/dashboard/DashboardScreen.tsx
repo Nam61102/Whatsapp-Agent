@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../../shared/components/Avatar';
 import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
+import { formatDueDate } from '../../shared/utils/dates';
 
 const formatCountdown = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -180,7 +181,7 @@ export const DashboardScreen = ({ navigation }: any) => {
     if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     fetchTimeoutRef.current = setTimeout(() => {
       if (fetchDashboardRef.current) fetchDashboardRef.current();
-    }, 2500);
+    }, 800);
   }, []);
 
   // Dismissing is an explicit action saved on the server; if saving fails the card comes back.
@@ -345,9 +346,10 @@ export const DashboardScreen = ({ navigation }: any) => {
           </View>
           <Text style={styles.heroGreeting}>{getGreeting()}</Text>
           <Text style={styles.heroUserName}>{user?.name || 'Vaibhav'}</Text>
+          <Text style={styles.heroSubtitle}>Your daily communication overview</Text>
         </View>
         <View style={styles.heroMascotWrap}>
-          <Sticker name="robot" size={88} />
+          <Sticker name="robot" size={82} />
         </View>
       </View>
 
@@ -579,7 +581,7 @@ export const DashboardScreen = ({ navigation }: any) => {
 
           {!dashboardData.actionCenterItems || dashboardData.actionCenterItems.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Illustration name="done" size={170} />
+              <Illustration name="done" size={110} />
               <Text style={styles.emptyTitle}>Everything caught up!</Text>
               <Text style={styles.emptySub}>No pending replies, follow-ups, or birthdays requiring action right now.</Text>
             </View>
@@ -706,7 +708,7 @@ export const DashboardScreen = ({ navigation }: any) => {
                       <Text style={styles.actionTimeText}>
                         {item.timeAgo ||
                           (item.eventDate
-                            ? new Date(item.eventDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                            ? formatDueDate(item.eventDate)
                             : 'Recent')}
                       </Text>
                     </View>
@@ -807,7 +809,45 @@ export const DashboardScreen = ({ navigation }: any) => {
                       </>
                     )}
 
-                    {isFollowUp && (
+                    {isFollowUp && item.suggestedReply && (
+                      <>
+                        <TouchableOpacity
+                          style={styles.btnSecondary}
+                          onPress={() =>
+                            navigation.navigate('ChatsTab', {
+                              screen: 'ChatDetail',
+                              params: {
+                                chatId: item.conversationId,
+                                contactName: item.contactName,
+                                initialText: item.suggestedReply,
+                                fromItem: { id: item.id, category: item.category },
+                              },
+                            })
+                          }
+                        >
+                          <IconText center icon="create-outline" style={styles.btnSecondaryText}>Edit Reply</IconText>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.btnPrimary}
+                          onPress={() =>
+                            navigation.navigate('ChatsTab', {
+                              screen: 'ChatDetail',
+                              params: {
+                                chatId: item.conversationId,
+                                contactName: item.contactName,
+                                initialText: item.suggestedReply,
+                                fromItem: { id: item.id, category: item.category },
+                              },
+                            })
+                          }
+                        >
+                          <IconText center icon="send" style={styles.btnPrimaryText}>Send</IconText>
+                        </TouchableOpacity>
+                      </>
+                    )}
+
+                    {isFollowUp && !item.suggestedReply && (
                       <TouchableOpacity
                         style={[styles.btnPrimary, { flex: 1 }]}
                         onPress={() =>
@@ -816,7 +856,7 @@ export const DashboardScreen = ({ navigation }: any) => {
                             params: {
                               chatId: item.conversationId,
                               contactName: item.contactName,
-                              initialText: item.suggestedReply,
+                              initialText: '',
                               fromItem: { id: item.id, category: item.category },
                             },
                           })
@@ -855,56 +895,83 @@ export const DashboardScreen = ({ navigation }: any) => {
       {/* Recent Conversations */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Chats</Text>
+          <View>
+            <IconText icon="chatbubbles" style={styles.sectionTitle}>Recent Chats</IconText>
+            <Text style={styles.sectionSub}>Latest synchronized conversations</Text>
+          </View>
           <TouchableOpacity onPress={() => navigation.navigate('ChatsTab')}>
-            <Text style={styles.seeAllText}>Open Chats</Text>
+            <Text style={styles.seeAllText}>Open Chats ›</Text>
           </TouchableOpacity>
         </View>
 
         {recentChats.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Illustration name="chat" size={170} />
+            <Illustration name="chat" size={110} />
             <Text style={styles.emptyTitle}>No conversations yet</Text>
             <Text style={styles.emptySub}>
               When your WhatsApp messages sync, your recent conversations will appear here.
             </Text>
           </View>
         ) : (
-          recentChats.map((chat) => {
-            const isGroup = chat.chatType === 'GROUP' || chat.isGroup || chat.whatsappChatJid?.includes('@g.us');
-            const storedChatTitle = typeof chat.title === 'string' ? chat.title.trim() : '';
-            const resolvedChatTitle = storedChatTitle || (isGroup ? resolveDisplayName(chat.contact, chat.title, isGroup) : 'Unknown');
-            return (
-              <TouchableOpacity
-                key={chat.id}
-                style={styles.chatRow}
-                onPress={() =>
-                  navigation.navigate('ChatsTab', {
-                    screen: 'ChatDetail',
-                    params: {
-                      chatId: chat.id,
-                      contactName: resolvedChatTitle,
-                    },
-                  })
-                }
-              >
-                <Avatar name={resolvedChatTitle} uri={chat.avatarUrl || chat.contact?.profilePhotoUrl} size={44} group={isGroup} style={{ marginRight: 12 }} />
-                <View style={styles.chatInfo}>
-                  <Text style={styles.chatName}>{resolvedChatTitle}</Text>
-                  <Text style={styles.chatLastMsg} numberOfLines={1}>
-                    {chat.lastMessageText && chat.lastMessageText !== '[Chat initialized]'
-                      ? chat.lastMessageText
-                      : 'No messages yet'}
-                  </Text>
-                </View>
-                {chat.unreadCount > 0 && (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadCount}>{chat.unreadCount}</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })
+          <View style={styles.chatsCardContainer}>
+            {recentChats.map((chat, idx) => {
+              const isGroup = chat.chatType === 'GROUP' || chat.isGroup || chat.whatsappChatJid?.includes('@g.us');
+              const storedChatTitle = typeof chat.title === 'string' ? chat.title.trim() : '';
+              const resolvedChatTitle = storedChatTitle || (isGroup ? resolveDisplayName(chat.contact, chat.title, isGroup) : 'Unknown');
+              const isLast = idx === recentChats.length - 1;
+
+              return (
+                <React.Fragment key={chat.id}>
+                  <TouchableOpacity
+                    style={styles.chatListItem}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      navigation.navigate('ChatsTab', {
+                        screen: 'ChatDetail',
+                        params: {
+                          chatId: chat.id,
+                          contactName: resolvedChatTitle,
+                        },
+                      })
+                    }
+                  >
+                    <Avatar
+                      name={resolvedChatTitle}
+                      uri={chat.avatarUrl || chat.contact?.profilePhotoUrl}
+                      size={44}
+                      group={isGroup}
+                      style={{ marginRight: 12 }}
+                    />
+                    <View style={styles.chatInfo}>
+                      <View style={styles.chatTitleRow}>
+                        <Text style={styles.chatName} numberOfLines={1}>
+                          {resolvedChatTitle}
+                        </Text>
+                        {isGroup && (
+                          <View style={styles.groupBadge}>
+                            <Text style={styles.groupBadgeText}>Group</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.chatLastMsg} numberOfLines={1}>
+                        {chat.lastMessageText && chat.lastMessageText !== '[Chat initialized]'
+                          ? chat.lastMessageText
+                          : 'No messages yet'}
+                      </Text>
+                    </View>
+                    {chat.unreadCount > 0 ? (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadCount}>{chat.unreadCount}</Text>
+                      </View>
+                    ) : (
+                      <Ionicons name="chevron-forward" size={16} color="#CBD5E1" />
+                    )}
+                  </TouchableOpacity>
+                  {!isLast && <View style={styles.chatDivider} />}
+                </React.Fragment>
+              );
+            })}
+          </View>
         )}
       </View>
     </ScrollView>
@@ -938,13 +1005,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#D1EAE5',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
   },
   heroTextContent: {
     flex: 1,
@@ -981,11 +1048,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginVertical: 2,
   },
-  heroDescription: {
+  heroSubtitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
-    lineHeight: 16,
+    color: '#64748B',
     marginTop: 2,
+    fontWeight: '500',
   },
   heroMascotWrap: {
     alignItems: 'center',
@@ -1397,21 +1464,21 @@ const styles = StyleSheet.create({
   senderPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F5F2',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#CCEBE5',
+    borderColor: '#E2E8F0',
   },
   groupPill: {
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
     borderColor: '#E2E8F0',
   },
   senderPillText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#075E54',
+    color: '#1E293B',
   },
   actionTitle: {
     fontSize: 16,
@@ -1554,6 +1621,46 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 12,
     fontWeight: '700',
+  },
+  chatsCardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  chatListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  chatTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 3,
+  },
+  groupBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 6,
+  },
+  groupBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  chatDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 72,
   },
   chatRow: {
     flexDirection: 'row',

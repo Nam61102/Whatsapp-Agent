@@ -1006,7 +1006,11 @@ export class AIService implements OnModuleInit {
     const parsedAt = input.messageTimestamp ? new Date(input.messageTimestamp) : new Date();
     const sentAt = Number.isNaN(parsedAt.getTime()) ? new Date() : parsedAt;
     const sentDay = this.dayInTimezone(sentAt, timeZone);
-    const weekday = sentAt.toLocaleDateString('en-US', { weekday: 'long', timeZone });
+    // Between midnight and 5 AM people still think of it as the previous day: a 12:24 AM "see you tomorrow"
+    // means the day that is about to begin, not the one after. Relative words are resolved from that day.
+    const localHour = Number(sentAt.toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone }).slice(0, 2)) % 24;
+    const refDay = localHour < 5 ? this.dayInTimezone(new Date(sentAt.getTime() - 24 * 60 * 60 * 1000), timeZone) : sentDay;
+    const weekday = new Date(refDay + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
 
     const contextHeader = groupName
       ? `Group "${groupName}", sent by "${senderName}"`
@@ -1022,7 +1026,7 @@ export class AIService implements OnModuleInit {
     const prompt = `You read one WhatsApp message for ${currentUserName} and extract every distinct item worth saving.
 Ordinary chat (greetings, thanks, emoji, "ok", jokes, small talk) produces {"items": [], "updates": []}.
 
-The message was sent on ${sentDay} (${weekday}), timezone ${timeZone}. Resolve "today", "tomorrow", "kal", "udya", weekdays and "next Monday" ONLY from this date.
+The message was sent on ${sentDay}${refDay !== sentDay ? ` just after midnight, so treat the reference day as ${refDay}` : ''} (${weekday}), timezone ${timeZone}. Resolve "today", "tomorrow", "kal", "udya", weekdays and "next Monday" ONLY from ${refDay}.
 Context: ${contextHeader}
 
 Earlier messages (context only, do not extract from them):
@@ -1312,9 +1316,9 @@ Latest message from ${senderName}:
 ${groupName ? `This is the group "${groupName}". Only reply if the message names ${currentUserName} or asks ${currentUserName} directly.` : ''}
 
 Return [] (an empty array) unless ALL of these are true:
-1. The latest message asks ${currentUserName} a direct question or requests an answer, a confirmation or a decision, OR it tells ${currentUserName} about a meeting, appointment or task that people normally acknowledge ("ok, see you tomorrow", "done, will do").
+1. The latest message asks ${currentUserName} a direct question or requests an answer, a confirmation or a decision, OR it gives ${currentUserName} an important update that people normally acknowledge: a meeting, appointment, task, order or delivery, payment, invoice, document, deadline or change ("ok, see you tomorrow", "done, will do", "ok thanks, will collect it", "received, thanks").
 2. The reply can be written using ONLY facts already in the message or the history. Never invent times, prices, places, names or promises. If the answer depends on something only ${currentUserName} knows (are you free, will you come), return [].
-3. The message is not just a greeting, thanks, a forward, an ad, a link, a meme, a statement, or media without text.
+3. The message is not just a greeting, thanks, a forward, an ad, a link, a meme, casual small talk, or media without text. A plain acknowledgement of an important update (rule 1) IS wanted.
 
 If you reply:
 - Write like a real friend texting, in the same language and script as the latest message (Marathi, Hindi, Hinglish, English). Hinglish stays in roman letters.
@@ -1738,8 +1742,23 @@ Return ONLY valid JSON, no markdown:
         }
 
         const preview = e.message?.textContent || e.summary;
-        // Only a real, saved AI reply is shown. No canned template.
-        const savedReply = e.messageId ? replyByMessage.get(e.messageId) : undefined;
+        let savedReply = e.messageId ? replyByMessage.get(e.messageId) : undefined;
+
+        if (!savedReply && preview) {
+          savedReply = this.generateFallbackReply(e.extractionType, preview, senderName, e.summary);
+
+          if (e.messageId && e.conversationId) {
+            this.ensureReplySuggestion(
+              userId,
+              whatsappAccountId,
+              e.conversationId,
+              e.messageId,
+              preview,
+              senderName,
+              savedReply
+            ).catch(() => {});
+          }
+        }
 
         items.push({
           id: e.id,
@@ -1852,7 +1871,7 @@ Return ONLY valid JSON, no markdown:
             conversationId: b.conversationId,
             messageId: b.messageId,
             sourceMessageText: sourceMsg,
-            suggestedReply: null,
+            suggestedReply: `Thank you so much${senderName && senderName !== 'Contact' ? ' ' + senderName.trim().split(/\s+/)[0] : ''}! Wishing you the same! 🎉`,
             summary: b.description || b.summary,
             eventDate: b.eventDate,
             createdAt: b.createdAt,
@@ -1979,5 +1998,100 @@ Return ONLY valid JSON, no markdown:
       totalActionItems: actionItems.length,
       tokenStats,
     };
+  }
+
+  private generateFallbackReply(extractionType: string, previewText: string, senderName: string, summary?: string): string {
+    const text = ((previewText || '') + ' ' + (summary || '')).toLowerCase();
+    const name = senderName && senderName !== 'Contact' && senderName !== 'Group member' ? ` ${senderName.trim().split(/\s+/)[0]}` : '';
+
+    if (extractionType === 'ORDER' || text.includes('order') || text.includes('delivery') || text.includes('deliver') || text.includes('reach')) {
+      return `Thanks for the update${name}! I'll be available to receive it.`;
+    }
+    if (extractionType === 'MEETING' || extractionType === 'APPOINTMENT') {
+      return `Sounds good${name}, looking forward to it!`;
+    }
+    if (extractionType === 'TASK' || extractionType === 'REQUIREMENT') {
+      return `Got it${name}, I'll take care of this right away.`;
+    }
+    if (extractionType === 'PAYMENT' || extractionType === 'INVOICE') {
+      return `Thanks for letting me know${name}. I'll check and confirm shortly.`;
+    }
+    if (extractionType === 'QUESTION') {
+      return `Thanks for checking in${name}, let me get back to you with the details.`;
+    }
+    if (extractionType === 'TRAVEL') {
+      return `Got the travel details, thank you${name}!`;
+    }
+    if (extractionType === 'COMPLAINT' || extractionType === 'URGENT') {
+      return `Thanks for bringing this to my attention${name}. Looking into it right now.`;
+    }
+    if (extractionType === 'REMINDER' || extractionType === 'FOLLOW_UP') {
+      return `Thanks for the reminder${name}! Will update you soon.`;
+    }
+    if (extractionType === 'DOCUMENT') {
+      return `Received, thank you${name}! Going through it now.`;
+    }
+    if (extractionType === 'PROJECT_UPDATE') {
+      return `Thanks for the update${name}, great progress!`;
+    }
+    return `Got it, thank you for the update${name}!`;
+  }
+
+  private async ensureReplySuggestion(
+    userId: string,
+    whatsappAccountId: string,
+    conversationId: string,
+    messageId: string,
+    preview: string,
+    senderName: string,
+    fallbackText: string
+  ) {
+    try {
+      const existing = await this.prisma.aIReplySuggestion.findFirst({
+        where: { sourceMessageId: messageId },
+      });
+      if (existing) return;
+
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
+      const currentUserName = user?.name || 'User';
+
+      let replyText = fallbackText;
+      try {
+        const genResult = await this.generateReplySuggestionsWithTokens(
+          preview,
+          senderName,
+          null,
+          currentUserName
+        );
+        if (genResult && genResult.items.length > 0) {
+          replyText = genResult.items[0].text;
+        }
+      } catch {
+        // Fall back to fallbackText if Gemini generation fails
+      }
+
+      const created = await this.prisma.aIReplySuggestion.create({
+        data: {
+          userId,
+          whatsappAccountId,
+          conversationId,
+          sourceMessageId: messageId,
+          suggestion: replyText,
+          tone: 'casual',
+          language: 'en',
+          sourceMessagePreview: preview.slice(0, 100),
+          confidence: 0.9,
+          contextSummary: `Generated for "${preview.slice(0, 40)}"`,
+        },
+      });
+
+      this.eventsGateway.sendToUser(userId, 'ai:suggestion', {
+        messageId,
+        conversationId,
+        suggestions: [{ text: replyText, tone: 'casual', confidence: 0.9 }],
+      });
+    } catch {
+      // Ignore background persistence errors
+    }
   }
 }

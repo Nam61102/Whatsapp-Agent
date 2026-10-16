@@ -11,10 +11,10 @@ export const Colors = {
   accentLight: '#DCFCE7',
 
   // Surfaces
-  background: '#F4F7F6', // Soft, clean off-white canvas
+  background: '#F8FAFC', // Ultra-clean crisp slate-50 canvas
   cardBackground: '#FFFFFF',
-  surfaceMuted: '#F8FAFC',
-  surfaceHover: '#F1F5F9',
+  surfaceMuted: '#F1F5F9',
+  surfaceHover: '#E2E8F0',
 
   // Text
   text: '#0F172A', // Deep slate obsidian

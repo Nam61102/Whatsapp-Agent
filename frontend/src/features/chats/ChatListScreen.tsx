@@ -111,12 +111,18 @@ export const ChatListScreen = ({ navigation }: any) => {
   useEffect(() => {
     fetchChats(search);
 
+    // The server announces each message under three event names; count it once.
+    const seenMessageIds = new Set<string>();
     const handleNewMessage = (data: any) => {
       if (!data || !data.message) {
         debouncedFetchChats(search);
         return;
       }
       const { chatId, message } = data;
+      const key = String(message.id || message.externalMessageId || `${chatId}:${message.messageTimestamp}`);
+      if (seenMessageIds.has(key)) return;
+      seenMessageIds.add(key);
+      if (seenMessageIds.size > 500) seenMessageIds.delete(seenMessageIds.values().next().value as string);
       setConversations((prev) => {
         const existingIndex = prev.findIndex((c) => c.id === chatId || c.externalChatId === message.externalSenderId);
         const updatedText = message.textContent || '[Message]';
@@ -133,7 +139,8 @@ export const ChatListScreen = ({ navigation }: any) => {
           const rest = prev.filter((_, idx) => idx !== existingIndex);
           return [updatedConv, ...rest];
         } else {
-          debouncedFetchChats(search);
+          // A chat we have not loaded yet: fetch now, no waiting.
+          fetchChats(search);
           return prev;
         }
       });

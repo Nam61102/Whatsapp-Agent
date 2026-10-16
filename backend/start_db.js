@@ -24,6 +24,17 @@ function checkPort(port, host = '127.0.0.1') {
 }
 
 async function ensureMongoRunning() {
+  if (
+    process.env.DATABASE_URL &&
+    !process.env.DATABASE_URL.includes('localhost') &&
+    !process.env.DATABASE_URL.includes('127.0.0.1')
+  ) {
+    return;
+  }
+  if (process.platform !== 'win32' || !fs.existsSync('C:\\Program Files\\MongoDB\\Server\\8.0\\bin\\mongod.exe')) {
+    return;
+  }
+
   const isRunning = await checkPort(27018);
   if (isRunning) {
     console.log('[MongoDB] Replica set rs0 on port 27018 is active.');
