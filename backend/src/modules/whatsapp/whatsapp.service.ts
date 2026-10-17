@@ -6,6 +6,7 @@ import { WhatsAppEventService } from './whatsapp-event.service';
 import { ConnectionState } from './adapters/whatsapp-adapter.interface';
 import { DeviceContactsService } from '../../shared/device-contacts.service';
 import { AIQueueService } from '../ai/ai-queue.service';
+import { withTimeout } from '../../shared/with-timeout';
 
 @Injectable()
 export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
@@ -1057,35 +1058,57 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     const liveStatus = this.baileysAdapter.getConnectionState(account.userId);
     if (liveStatus === 'CONNECTED' || liveStatus === 'READY' || liveStatus === 'SYNCING') {
       Promise.resolve().then(async () => {
+        // Every step has a time limit and the flow ALWAYS ends with a finished message, so the card can never
+        // sit at "10%" forever when WhatsApp or the database stalls.
+        let note = 'WhatsApp re-synchronization completed.';
         try {
-          this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 10, message: 'Re-syncing WhatsApp...' });
+          this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 10, message: 'Asking WhatsApp for your groups and chats...' });
           await this.baileysAdapter.resyncSession(account.userId);
           this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 60, message: 'Updating contacts and chats...' });
-          await this.eventService.runSessionBackfill(userId, accountId);
+          await withTimeout(this.eventService.runSessionBackfill(userId, accountId), 60000, 'Updating contacts and chats');
+        } catch (err: any) {
+          this.logger.warn(`Background session resync error: ${err.message}`);
+          note = `Re-sync finished with a problem (${err.message}). Your data is unchanged; try again in a minute.`;
+        }
+        try {
           const msgCount = await this.prisma.message.count({ where: { userId, whatsappAccountId: accountId } });
           this.eventService.updateSyncProgress(userId, {
             status: 'COMPLETED',
             currentStage: 'COMPLETED',
             progress: 100,
-            message: 'WhatsApp re-synchronization completed.',
+            message: note,
             messages: { total: msgCount, processed: msgCount, percentage: 100 },
             canContinueToApp: true,
             completedAt: new Date(),
           });
         } catch (err: any) {
-          this.logger.warn(`Background session resync error: ${err.message}`);
+          this.logger.warn(`Could not report re-sync result: ${err.message}`);
         }
       });
     }
 
     const status = await this.getStatus(userId);
 
-    this.eventsGateway.sendToUser(userId, 'whatsapp.sync', {
-      stage: 'syncing',
-      progress: 10,
-      message: 'Re-synchronization started. WhatsApp data is syncing in the background.',
-      stats: status.stats,
-    });
+    if (!(liveStatus === 'CONNECTED' || liveStatus === 'READY' || liveStatus === 'SYNCING')) {
+      // Nothing to re-sync: there is no live WhatsApp connection on the server. Say so instead of showing progress.
+      this.eventService.updateSyncProgress(userId, {
+        status: 'COMPLETED',
+        currentStage: 'COMPLETED',
+        progress: 100,
+        message: 'WhatsApp is not connected on the server right now. Open Settings and link WhatsApp again.',
+        canContinueToApp: true,
+        completedAt: new Date(),
+      });
+    }
+
+    if (liveStatus === 'CONNECTED' || liveStatus === 'READY' || liveStatus === 'SYNCING') {
+      this.eventsGateway.sendToUser(userId, 'whatsapp.sync', {
+        stage: 'syncing',
+        progress: 10,
+        message: 'Re-synchronization started. WhatsApp data is syncing in the background.',
+        stats: status.stats,
+      });
+    }
 
     return {
       success: true,

@@ -4,6 +4,7 @@ import * as QRCode from 'qrcode';
 import * as path from 'path';
 import * as fs from 'fs';
 import pino from 'pino';
+import { withTimeout } from '../../../shared/with-timeout';
 import makeWASocket, {
   Browsers,
   DisconnectReason,
@@ -226,7 +227,7 @@ export class BaileysAdapter implements IWhatsAppAdapter {
     const sock = this.sockets.get(userId);
     if (!sock) return [];
     try {
-      const groups = await sock.groupFetchAllParticipating();
+      const groups = await withTimeout(sock.groupFetchAllParticipating(), 25000, 'Fetching groups');
       const groupList = Object.values(groups || {});
       return groupList.map((g) => ({
         id: g.id,
@@ -282,9 +283,10 @@ export class BaileysAdapter implements IWhatsAppAdapter {
           },
         });
       }
-      await sock.resyncAppState(
-        ['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'],
-        true
+      await withTimeout(
+        sock.resyncAppState(['critical_block', 'critical_unblock_low', 'regular_high', 'regular_low', 'regular'], true),
+        25000,
+        'App state resync'
       );
       try {
         (sock.ev as any).flush?.();
