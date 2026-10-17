@@ -79,8 +79,12 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
   const fetchMessages = useCallback(async () => {
     try {
       const response: any = await apiClient.get(`/chats/${chatId}/messages?limit=50`);
-      // Server returns newest first; show oldest at top and newest at bottom, like WhatsApp.
-      setMessages([...(response.messages || [])].reverse());
+      // Server returns chronological messages; sort by timestamp (oldest at top, newest at bottom)
+      const list = [...(response.messages || [])].sort(
+        (a: any, b: any) =>
+          new Date(a.messageTimestamp).getTime() - new Date(b.messageTimestamp).getTime()
+      );
+      setMessages(list);
       setHasMore(Boolean(response.hasMore));
     } catch (err) {
       console.error('Failed to fetch messages:', err);
@@ -98,7 +102,11 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
         `/chats/${chatId}/messages?limit=50&before=${oldestId}`
       );
       if (response.messages && response.messages.length > 0) {
-        setMessages((prev) => [...[...response.messages].reverse(), ...prev]);
+        const olderList = [...response.messages].sort(
+          (a: any, b: any) =>
+            new Date(a.messageTimestamp).getTime() - new Date(b.messageTimestamp).getTime()
+        );
+        setMessages((prev) => [...olderList, ...prev]);
         setHasMore(Boolean(response.hasMore));
       } else {
         setHasMore(false);
