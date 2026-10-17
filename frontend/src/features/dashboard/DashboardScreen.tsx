@@ -26,6 +26,7 @@ import { Avatar } from '../../shared/components/Avatar';
 import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
 import { formatDueDate } from '../../shared/utils/dates';
+import { BadgeLabel } from '../../shared/components/BadgeLabel';
 
 const formatCountdown = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -299,9 +300,9 @@ export const DashboardScreen = ({ navigation }: any) => {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning 👋';
-    if (hour < 17) return 'Good Afternoon ☀️';
-    return 'Good Evening 🌙';
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
   };
 
   const handleUseSuggestion = (suggestion: any) => {
@@ -389,7 +390,7 @@ export const DashboardScreen = ({ navigation }: any) => {
           onPress={() => setShowSyncModal(true)}
         >
           <View style={styles.syncBannerTop}>
-            <Text style={styles.syncBannerTitle}>⚡ WhatsApp Sync in Background ({syncProgress.progress || 0}%)</Text>
+            <IconText icon="flash" style={styles.syncBannerTitle}>{`WhatsApp Sync in Background (${syncProgress.progress || 0}%)`}</IconText>
             <Text style={styles.syncBannerAction}>Details ›</Text>
           </View>
           <Text style={styles.syncBannerMsg}>{syncProgress.message || 'Syncing messages & extracting intelligence...'}</Text>
@@ -415,7 +416,7 @@ export const DashboardScreen = ({ navigation }: any) => {
             <View style={styles.modalHeaderRow}>
               <IconText icon="flash" style={styles.modalHeaderTitle}>WhatsApp Sync Status</IconText>
               <TouchableOpacity onPress={() => setShowSyncModal(false)} style={styles.closeCircle}>
-                <Text style={styles.closeCircleText}>✕</Text>
+                <Ionicons name="close" size={16} color="#64748B" />
               </TouchableOpacity>
             </View>
 
@@ -427,7 +428,7 @@ export const DashboardScreen = ({ navigation }: any) => {
                     {syncPhase === 'running' ? (
                       <ActivityIndicator size="small" color="#34D399" />
                     ) : syncPhase === 'done' ? (
-                      <Text style={styles.checkMark}>✓</Text>
+                      <Ionicons name="checkmark-circle" size={20} color="#34D399" />
                     ) : (
                       <Ionicons name="pause-circle-outline" size={20} color="#A7F3D0" />
                     )}
@@ -746,9 +747,7 @@ export const DashboardScreen = ({ navigation }: any) => {
                     <View style={styles.actionHeaderLeft}>
                       <Sticker name={itemSticker} size={30} style={{ marginRight: 4 }} />
                       <View style={[styles.actionBadge, { backgroundColor: catTheme.badgeBg, borderColor: catTheme.badgeBorder }]}>
-                        <Text style={[styles.actionBadgeText, { color: catTheme.badgeText }]}>
-                          {item.badgeLabel}
-                        </Text>
+                        <BadgeLabel label={item.badgeLabel} color={catTheme.badgeText} style={styles.actionBadgeText} />
                       </View>
                       <Text style={styles.actionTimeText}>
                         {item.timeAgo ||

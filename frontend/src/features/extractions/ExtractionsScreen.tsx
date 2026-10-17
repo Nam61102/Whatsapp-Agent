@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
 import { formatDueDate } from '../../shared/utils/dates';
+import { BadgeLabel } from '../../shared/components/BadgeLabel';
 
 const CATEGORIES = [
   { key: 'ALL', label: 'All', icon: '⚡' },
@@ -536,9 +537,7 @@ export const ExtractionsScreen = ({ navigation }: any) => {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, flexWrap: 'wrap' }}>
             <Sticker name={itemSticker} size={30} style={{ marginRight: 2 }} />
             <View style={[styles.badge, { backgroundColor: catTheme.badgeBg, borderColor: catTheme.badgeBorder }]}>
-              <Text style={[styles.badgeText, { color: catTheme.badgeText }]}>
-                {item.badgeLabel || '⚡ Action Item'}
-              </Text>
+              <BadgeLabel label={item.badgeLabel || '⚡ Action Item'} color={catTheme.badgeText} style={styles.badgeText} />
             </View>
             <Text style={styles.timeText}>
               {item.timeAgo ||

@@ -67,7 +67,7 @@ export const RegisterScreen = ({ navigation }: any) => {
           <View style={styles.stickerWrapper}>
             <Sticker name="chat" size={130} />
             <View style={styles.speechBubble}>
-              <Text style={styles.speechText}>Let's get connected! 💬</Text>
+              <Text style={styles.speechText}>Let's get connected!</Text>
             </View>
           </View>
           <Text style={styles.appTitle}>Create Account</Text>

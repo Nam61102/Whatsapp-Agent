@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../../shared/components/Avatar';
 import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
+import { IconText } from '../../shared/components/IconText';
 
 export const ContactListScreen = ({ navigation }: any) => {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -131,7 +132,7 @@ export const ContactListScreen = ({ navigation }: any) => {
         </View>
 
         <View style={styles.actionCol}>
-          <Text style={styles.viewProfileTag}>✨ AI Profile ›</Text>
+          <IconText icon="sparkles" style={styles.viewProfileTag}>AI Profile</IconText>
         </View>
       </TouchableOpacity>
     );

@@ -20,6 +20,7 @@ import { Message } from '../../shared/types';
 import { resolveContactIdentity, resolveDisplayName, isHumanName } from '../../shared/utils/nameResolver';
 import { IconText } from '../../shared/components/IconText';
 import { Sticker } from '../../shared/components/Sticker';
+import { Ionicons } from '@expo/vector-icons';
 
 export const ChatDetailScreen = ({ route, navigation }: any) => {
   const { chatId, contactName, contactId, conversation: routeConv, initialText, avatarUrl, highlightMessageId, fromItem } = route.params || {};
@@ -246,15 +247,15 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
   const renderStatusTicks = (status?: string) => {
     switch (status) {
       case 'SENDING':
-        return <Text style={styles.tickText}>⏳</Text>;
+        return <Ionicons name="time-outline" size={14} color="#8696A0" />;
       case 'SENT':
-        return <Text style={styles.tickText}>✓</Text>;
+        return <Ionicons name="checkmark" size={14} color="#8696A0" />;
       case 'DELIVERED':
-        return <Text style={styles.tickText}>✓✓</Text>;
+        return <Ionicons name="checkmark-done" size={14} color="#8696A0" />;
       case 'READ':
-        return <Text style={[styles.tickText, styles.blueTick]}>✓✓</Text>;
+        return <Ionicons name="checkmark-done" size={14} color="#34B7F1" />;
       default:
-        return <Text style={styles.tickText}>✓</Text>;
+        return <Ionicons name="checkmark" size={14} color="#8696A0" />;
     }
   };
 
@@ -385,7 +386,7 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
             onPress={() => fetchSuggestions(true)}
             disabled={suggestionsLoading}
           >
-            <Text style={styles.refreshSugText}>{suggestionsLoading ? 'Thinking...' : '✨ Suggest a reply'}</Text>
+            <Text style={styles.refreshSugText}>{suggestionsLoading ? 'Thinking...' : 'Suggest a reply'}</Text>
           </TouchableOpacity>
         )}
 
@@ -436,7 +437,7 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
             onPress={() => handleSend()}
             disabled={!inputText.trim() || sending}
           >
-            <Text style={styles.sendIcon}>➤</Text>
+            <Ionicons name="send" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

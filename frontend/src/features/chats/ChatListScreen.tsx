@@ -282,7 +282,7 @@ export const ChatListScreen = ({ navigation }: any) => {
         <View style={styles.contentCol}>
           <View style={styles.topRow}>
             <View style={styles.nameContainer}>
-              {item.isPinned && <Text style={styles.pinIcon}>📌 </Text>}
+              {item.isPinned && <Ionicons name="pin" size={13} color="#64748B" style={{ marginRight: 4 }} />}
               <Text style={styles.displayName} numberOfLines={1}>
                 {title}
               </Text>
@@ -293,7 +293,7 @@ export const ChatListScreen = ({ navigation }: any) => {
               ) : isChannel ? (
                 <Text style={styles.channelBadge}>CHANNEL</Text>
               ) : null}
-              {item.isMuted && <Text style={styles.muteIcon}> 🔕</Text>}
+              {item.isMuted && <Ionicons name="notifications-off" size={13} color="#94A3B8" style={{ marginLeft: 4 }} />}
             </View>
             <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
           </View>

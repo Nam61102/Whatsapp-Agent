@@ -17,6 +17,7 @@ import { socketService } from '../../shared/services/socket';
 import { loadDeviceContacts } from '../../shared/services/deviceContacts';
 import { Ionicons } from '@expo/vector-icons';
 import { Sticker } from '../../shared/components/Sticker';
+import { IconText } from '../../shared/components/IconText';
 
 export const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('demo@user.com');
@@ -67,7 +68,7 @@ export const LoginScreen = ({ navigation }: any) => {
           <View style={styles.stickerWrapper}>
             <Sticker name="robot" size={135} />
             <View style={styles.speechBubble}>
-              <Text style={styles.speechText}>Hi! I'm your WhatsApp AI 🤖</Text>
+              <Text style={styles.speechText}>Hi! I'm your WhatsApp AI</Text>
               <View style={styles.speechTail} />
             </View>
           </View>
@@ -77,13 +78,13 @@ export const LoginScreen = ({ navigation }: any) => {
           {/* Feature highlights pill row */}
           <View style={styles.featureRow}>
             <View style={styles.featurePill}>
-              <Text style={styles.featurePillText}>⚡ Live Sync</Text>
+              <IconText icon="flash" style={styles.featurePillText}>Live Sync</IconText>
             </View>
             <View style={[styles.featurePill, { backgroundColor: '#F3E8FF', borderColor: '#E9D5FF' }]}>
-              <Text style={[styles.featurePillText, { color: '#7E22CE' }]}>🧠 Gemini AI</Text>
+              <IconText icon="sparkles" style={[styles.featurePillText, { color: '#7E22CE' }]}>Gemini AI</IconText>
             </View>
             <View style={[styles.featurePill, { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' }]}>
-              <Text style={[styles.featurePillText, { color: '#15803D' }]}>🔒 Private</Text>
+              <IconText icon="lock-closed" style={[styles.featurePillText, { color: '#15803D' }]}>Private</IconText>
             </View>
           </View>
         </View>
