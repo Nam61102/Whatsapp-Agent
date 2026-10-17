@@ -18,7 +18,12 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#075E54"
-      }
+      },
+      "permissions": [
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ],
+      "package": "com.vaibhav_963.whatsappaiclient"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -32,6 +37,11 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00085f33-d6fe-4c27-9a24-0e885c10fbfc"
+      }
+    }
   }
 }

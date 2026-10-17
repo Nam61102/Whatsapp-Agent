@@ -22,6 +22,38 @@ export class ChatsService {
     return account;
   }
 
+  /** Newest message of each given chat, in a single database round trip. */
+  async latestMessages(
+    chatIds: string[]
+  ): Promise<Map<string, { text: string | null; at: Date; isFromMe: boolean; sender: string | null }>> {
+    const out = new Map<string, { text: string | null; at: Date; isFromMe: boolean; sender: string | null }>();
+    if (chatIds.length === 0) return out;
+    const res: any = await this.prisma.$runCommandRaw({
+      aggregate: 'messages',
+      pipeline: [
+        { $match: { conversationId: { $in: chatIds.map((id) => ({ $oid: id })) } } },
+        { $sort: { messageTimestamp: -1 } },
+        {
+          $group: {
+            _id: '$conversationId',
+            text: { $first: '$textContent' },
+            at: { $first: '$messageTimestamp' },
+            isFromMe: { $first: '$isFromMe' },
+            sender: { $first: '$metadata.senderName' },
+          },
+        },
+      ],
+      cursor: {},
+    });
+    for (const r of res?.cursor?.firstBatch ?? []) {
+      const id = r._id?.$oid ?? String(r._id);
+      const at = new Date(r.at?.$date ?? r.at);
+      if (Number.isNaN(at.getTime())) continue;
+      out.set(id, { text: r.text ?? null, at, isFromMe: Boolean(r.isFromMe), sender: r.sender ?? null });
+    }
+    return out;
+  }
+
   async getChats(userId: string, search?: string, limit: number = 50, offset: number = 0) {
     const account = await this.getAccount(userId);
 
@@ -78,36 +110,22 @@ export class ChatsService {
 
     // The preview and time come from the real latest message, so the list always matches what is
     // inside the chat. The copy saved on the conversation can lag behind (history sync, retention).
-    const latest = await Promise.all(
-      conversations.map((c) =>
-        this.prisma.message.findFirst({
-          where: { conversationId: c.id },
-          orderBy: { messageTimestamp: 'desc' },
-          select: {
-            textContent: true,
-            messageType: true,
-            messageTimestamp: true,
-            isFromMe: true,
-            metadata: true,
-            senderContact: { select: { displayName: true, pushName: true } },
-          },
-        })
-      )
-    );
-    const withLatest = conversations.map((c, i) => {
-      const m = latest[i];
+    // One query for all chats on the page, and the total is counted at the same time.
+    const [latestByChat, total] = await Promise.all([
+      this.latestMessages(conversations.map((c) => c.id)),
+      this.prisma.conversation.count({ where: whereClause }),
+    ]);
+    const withLatest = conversations.map((c) => {
+      const m = latestByChat.get(c.id);
       if (!m) return c;
       const isGroup = c.chatType === 'GROUP' || c.externalChatId?.endsWith('@g.us');
-      const who = (m.metadata as any)?.senderName || m.senderContact?.displayName || m.senderContact?.pushName;
-      const body = m.textContent && m.textContent.trim() ? m.textContent : '[Message]';
+      const body = m.text && m.text.trim() ? m.text : '[Message]';
       return {
         ...c,
-        lastMessageText: isGroup && !m.isFromMe && who ? `${who}: ${body}` : body,
-        lastMessageAt: m.messageTimestamp,
+        lastMessageText: isGroup && !m.isFromMe && m.sender ? `${m.sender}: ${body}` : body,
+        lastMessageAt: m.at,
       };
     });
-
-    const total = await this.prisma.conversation.count({ where: whereClause });
 
     return { conversations: withLatest, total, limit, offset };
   }

@@ -82,7 +82,8 @@ export class AIChangeStreamService implements OnModuleInit, OnModuleDestroy {
             }
             this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId });
             this.logger.log(`[CHANGE_STREAM] Outgoing message inserted: Dismissed action items for conversation ${conversationId}`);
-            return;
+            // Own messages are still read for commitments and plans, but only live ones (not history).
+            if (Date.now() - repliedAt.getTime() > 10 * 60 * 1000 || !textContent.trim()) return;
           }
 
           // History sync inserts thousands of old messages at once; those are not realtime.

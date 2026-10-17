@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { AuthStorage } from './authStorage';
+import { SOCKET_URL } from '../config/env';
 
-const SOCKET_URL = 'http://localhost:3000';
+export { SOCKET_URL };
 
 class SocketService {
   private socket: Socket | null = null;

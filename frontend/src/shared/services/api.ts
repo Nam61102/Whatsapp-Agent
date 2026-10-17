@@ -1,8 +1,9 @@
 import axios from 'axios';
 import { AuthStorage } from './authStorage';
 
-// Points to the local NestJS backend
-export const API_BASE_URL = 'http://localhost:3000/api/v1';
+import { API_BASE_URL } from '../config/env';
+
+export { API_BASE_URL };
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

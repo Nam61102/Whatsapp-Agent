@@ -806,6 +806,7 @@ export class AIService implements OnModuleInit {
           currentUserName,
           messageTimestamp: message.messageTimestamp,
           chatKind: isGroup ? null : 'direct',
+          fromMe: message.isFromMe,
           history: contextBefore.map((h) => ({ ...h, text: named(h.text) })),
           openItems,
         });
@@ -989,6 +990,8 @@ export class AIService implements OnModuleInit {
     currentUserName?: string;
     messageTimestamp?: Date | string | null;
     chatKind?: 'direct' | null;
+    /** The message was written by the user (not received). */
+    fromMe?: boolean;
     history?: { sender: string; text: string }[];
     openItems?: OpenItemRef[];
     timezone?: string;
@@ -1062,6 +1065,8 @@ Item types (use exactly these names): ${EXTRACTION_TYPES.join(', ')}.
     } If the wish does not name the person ("Happy birthday sir", "Happy birthday @12345"), look for the name in the earlier messages. If it is still unclear, STILL return the item with birthdayPerson null: birthday wishes in a group are always worth saving.
 Pick the single most specific type for each item. Never invent a type that is not in the list.
 
+${input.fromMe ? `IMPORTANT: this message was WRITTEN BY ${currentUserName} (the user) to ${groupName ? `the group "${groupName}"` : `"${senderName}"`}. Extract what ${currentUserName} promised, planned, scheduled, agreed to do, or must remember: "I will send it by Friday", "call me at 5", "meeting booked for Monday 11", "remind me to pay rent". Word titles from ${currentUserName}'s side ("Send proposal to Priya"). Set isForCurrentUser true. Do NOT extract questions ${currentUserName} asked, thanks, or wishes.
+` : ''}
 Rules:
 1. One message can hold many independent items. Return a SEPARATE item for each ("Call Rahul at 10, send Priya the file by Friday" = 2 items). Never merge unrelated actions.
 2. Use only facts in the message (history only explains references like "that", "it", "him"). Never invent names, times, amounts or places. Unknown stays null.
@@ -1124,6 +1129,7 @@ Return ONLY valid JSON, no markdown:
       currentUserName,
       sentDay,
       isGroup: Boolean(groupName),
+      fromMe: Boolean(input.fromMe),
     });
     const updates = this.validateExtractionUpdates(Array.isArray(parsed.updates) ? parsed.updates : [], {
       messageText,
@@ -1134,7 +1140,7 @@ Return ONLY valid JSON, no markdown:
 
   private validateExtractedItems(
     rawItems: any[],
-    ctx: { messageText: string; senderName: string; currentUserName: string; sentDay: string; isGroup: boolean }
+    ctx: { messageText: string; senderName: string; currentUserName: string; sentDay: string; isGroup: boolean; fromMe?: boolean }
   ): ExtractedItem[] {
     const loose = (s: string) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
     const message = loose(ctx.messageText);
@@ -1169,7 +1175,10 @@ Return ONLY valid JSON, no markdown:
       const amounts = Array.isArray((entities as any).amounts) ? (entities as any).amounts.filter(Boolean) : [];
 
       let targetPerson: string | null = null;
-      let forCurrentUser = ctx.isGroup ? raw.isForCurrentUser === true : raw.isForCurrentUser !== false;
+      // Something the user wrote is always the user's own commitment or plan. A birthday or festival wish the
+      // user sent needs no action, so it is not saved.
+      if (ctx.fromMe && (type === 'BIRTHDAY' || type === 'WISH')) continue;
+      let forCurrentUser = ctx.fromMe ? true : ctx.isGroup ? raw.isForCurrentUser === true : raw.isForCurrentUser !== false;
 
       if (type === 'BIRTHDAY') {
         const rawPerson = typeof raw.birthdayPerson === 'string' ? raw.birthdayPerson.trim() : '';
@@ -1739,6 +1748,9 @@ Return ONLY valid JSON, no markdown:
           }
         } else {
           senderName = e.contact?.displayName || 'Contact';
+        }
+        if (e.message?.isFromMe) {
+          senderName = 'You';
         }
 
         const preview = e.message?.textContent || e.summary;

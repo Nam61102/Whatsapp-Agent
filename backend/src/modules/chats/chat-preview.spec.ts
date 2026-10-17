@@ -4,10 +4,18 @@ function make(conv: any, latest: any) {
   const prisma: any = {
     whatsAppAccount: { findFirst: async () => ({ id: 'a1' }) },
     conversation: { findMany: async () => [conv], count: async () => 1 },
-    message: { findFirst: async () => latest },
   };
   const svc: any = new ChatsService(prisma);
   svc.getAccount = async () => ({ id: 'a1' });
+  // the single aggregate query returns one row per chat
+  svc.latestMessages = async (ids: string[]) => {
+    const m = new Map<string, any>();
+    if (latest) {
+      const g = latest.metadata?.senderName ?? null;
+      for (const id of ids) m.set(id, { text: latest.textContent, at: latest.messageTimestamp, isFromMe: latest.isFromMe, sender: g });
+    }
+    return m;
+  };
   return svc;
 }
 
@@ -34,5 +42,25 @@ describe('chat list matches the latest message in the chat', () => {
     expect((await media.getChats('u1')).conversations[0].lastMessageText).toBe('[Message]');
     const none = make({ id: 'c4', chatType: 'INDIVIDUAL', externalChatId: '3@s.whatsapp.net', lastMessageText: 'kept', lastMessageAt: when }, null);
     expect((await none.getChats('u1')).conversations[0].lastMessageText).toBe('kept');
+  });
+});
+
+describe('latestMessages (single query)', () => {
+  it('reads one row per chat from the aggregate and ignores bad dates', async () => {
+    const calls: any[] = [];
+    const prisma: any = {
+      $runCommandRaw: async (cmd: any) => (calls.push(cmd), {
+        cursor: { firstBatch: [
+          { _id: { $oid: 'c1' }, text: 'hi', at: { $date: '2026-10-16T16:36:26Z' }, isFromMe: true, sender: null },
+          { _id: { $oid: 'c2' }, text: 'x', at: 'not a date', isFromMe: false },
+        ] },
+      }),
+    };
+    const svc: any = new ChatsService(prisma);
+    const m = await svc.latestMessages(['c1', 'c2']);
+    expect(calls).toHaveLength(1); // one round trip for all chats
+    expect(m.get('c1')).toMatchObject({ text: 'hi', isFromMe: true });
+    expect(m.has('c2')).toBe(false);
+    expect((await svc.latestMessages([])).size).toBe(0);
   });
 });

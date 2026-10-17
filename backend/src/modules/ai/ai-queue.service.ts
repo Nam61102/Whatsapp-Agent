@@ -279,7 +279,6 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
         syncStatus: 'PROCESSED',
         aiStatus: { not: 'PROCESSED' },
         textContent: { not: null },
-        isFromMe: false,
       },
       orderBy: { messageTimestamp: 'desc' },
       take: 600,

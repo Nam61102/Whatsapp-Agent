@@ -211,3 +211,35 @@ describe('relative dates just after midnight', () => {
     expect(p).toContain('ONLY from 2026-10-16');
   });
 });
+
+describe('messages the user sends', () => {
+  const item = (text: string, over: any = {}) => ({
+    type: 'TASK', title: 'Send proposal to Priya', description: 'x', supportingText: text, dueDate: '2026-10-16', dueTime: null,
+    originalDateText: 'by Friday', dateCertain: true, priority: 'NORMAL', actionRequired: true, confidence: 0.92, isForCurrentUser: false, entities: {}, ...over,
+  });
+  const run3 = (text: string, it: any, extra: any = {}) =>
+    serviceReturning({ items: [it], updates: [] }).extractItemsWithTokens({
+      messageText: text, senderName: 'Amit', currentUserName: 'Vaibhav', messageTimestamp: new Date('2026-10-15T08:00:00Z'), fromMe: true, ...extra,
+    });
+
+  it('keeps the user\'s own commitment even in a group where it is not "addressed" to them', async () => {
+    const t = 'I will send the proposal to Priya by Friday';
+    const r = await run3(t, item(t), { groupName: 'Team', chatKind: null });
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].isForCurrentUser).toBe(true);
+  });
+  it('does not save a birthday or festival wish the user sent', async () => {
+    const t = 'Happy birthday Rahul';
+    expect((await run3(t, item(t, { type: 'BIRTHDAY', birthdayPerson: 'Rahul' }))).items).toHaveLength(0);
+    expect((await run3('Happy Diwali', item('Happy Diwali', { type: 'WISH' }))).items).toHaveLength(0);
+  });
+  it('tells the model the message was written by the user', async () => {
+    let prompt = '';
+    const svc: any = Object.create(AIService.prototype);
+    svc.callGeminiWithTokens = async (p: string) => ((prompt = p), { text: '{"items":[],"updates":[]}', inputTokens: 1, outputTokens: 1 });
+    await svc.extractItemsWithTokens({ messageText: 'call me at 5', senderName: 'Amit', currentUserName: 'Vaibhav', fromMe: true });
+    expect(prompt).toContain('WRITTEN BY Vaibhav');
+    await svc.extractItemsWithTokens({ messageText: 'call me at 5', senderName: 'Amit', currentUserName: 'Vaibhav' });
+    expect(prompt).not.toContain('WRITTEN BY');
+  });
+});
