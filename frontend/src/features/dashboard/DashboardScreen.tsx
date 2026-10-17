@@ -58,26 +58,34 @@ export const DashboardScreen = ({ navigation }: any) => {
   const fetchDashboard = useCallback(async () => {
     const seq = ++dashboardSeq.current;
     try {
-      const [dashRes, chatsRes, statusRes, syncRes, meRes]: any = await Promise.all([
-        apiClient.get('/ai/dashboard').catch(() => null),
-        apiClient.get('/chats?limit=5').catch(() => ({ conversations: [] })),
-        apiClient.get('/whatsapp/status').catch(() => ({ status: 'DISCONNECTED' })),
-        apiClient.get('/whatsapp/sync-progress').catch(() => null),
-        apiClient.get('/auth/me').catch(() => null),
+      // Each part fills in as soon as ITS request answers; the screen never waits for the slowest one.
+      // A failed request leaves what is already shown untouched.
+      const live = () => seq === dashboardSeq.current;
+      const part = (p: Promise<any>, apply: (r: any) => void) =>
+        p
+          .then((r) => {
+            if (live() && r) apply(r);
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (live()) setLoading(false);
+          });
+      await Promise.all([
+        part(apiClient.get('/ai/dashboard'), (r) => {
+          if (typeof r === 'object' && ('actionCenterItems' in r || r.aiEnabled === false)) setDashboardData(r);
+        }),
+        part(apiClient.get('/chats?limit=5'), (r) => {
+          if (r.conversations) setRecentChats(r.conversations);
+        }),
+        part(apiClient.get('/whatsapp/status'), (r) => {
+          if (r.status) setWhatsappStatus(r.status);
+        }),
+        part(apiClient.get('/whatsapp/sync-progress'), (r) => setSyncProgress(r)),
+        part(apiClient.get('/auth/me'), (r) => {
+          setUser(r);
+          AuthStorage.setUser(r);
+        }),
       ]);
-      if (seq !== dashboardSeq.current) return;
-
-      // A failed request must never blank the Action Center: keep what is already shown.
-      if (dashRes && typeof dashRes === 'object' && ('actionCenterItems' in dashRes || dashRes.aiEnabled === false)) {
-        setDashboardData(dashRes);
-      }
-      if (chatsRes?.conversations) setRecentChats(chatsRes.conversations);
-      if (statusRes?.status) setWhatsappStatus(statusRes.status);
-      if (syncRes) setSyncProgress(syncRes);
-      if (meRes) {
-        setUser(meRes);
-        AuthStorage.setUser(meRes);
-      }
 
     } catch (err) {
       console.error('Error fetching dashboard data:', err);

@@ -38,6 +38,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     this.logger.log('WhatsAppService initialized. WhatsApp provider mode: REAL (Baileys)');
     // Automatically restore registered Baileys sessions across server restarts
+    // Long retention needs the full WhatsApp history; a short one only needs the recent part, which arrives much faster.
+    this.baileysAdapter.setFullHistoryPolicy(async (userId: string) => {
+      const s = await this.prisma.userSettings.findUnique({ where: { userId }, select: { retentionDays: true } });
+      return (s?.retentionDays ?? 3) > 15;
+    });
     setTimeout(() => {
       // Only sessions whose user exists in the connected database are restored. A session folder that
       // belongs to another database (for example the local one while using the cloud one) is skipped.

@@ -7,7 +7,7 @@ export { API_BASE_URL };
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30s timeout to accommodate database & AI latency
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -33,7 +33,14 @@ apiClient.interceptors.request.use(async (config) => {
 
 apiClient.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
+    // A sleeping server (free hosting) or a dropped connection: retry reads once before giving up.
+    const cfg: any = error.config;
+    if (cfg && !error.response && (cfg.method || 'get').toLowerCase() === 'get' && (cfg.__retries || 0) < 1) {
+      cfg.__retries = (cfg.__retries || 0) + 1;
+      await new Promise((r) => setTimeout(r, 1500 * cfg.__retries));
+      return apiClient.request(cfg);
+    }
     if (error.response?.status === 401) {
       AuthStorage.clear();
     }

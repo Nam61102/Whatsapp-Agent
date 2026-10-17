@@ -170,17 +170,34 @@ export const RootNavigator = () => {
           // Fire-and-forget: load device address book so chat/contact names match the mobile phonebook.
           loadDeviceContacts().catch(() => {});
           let user = AuthStorage.getUser();
+          // Open straight away from what is saved on the device. The server is slow to answer from far away
+          // (and sleeps when idle), so the screen must not wait for it. Only a 401 means the login is invalid.
+          if (user) {
+            const cachedConnected = ['CONNECTED', 'READY', 'SYNCING'].includes(user?.whatsappAccount?.status);
+            setInitialRoute(cachedConnected ? 'Main' : 'WhatsAppConnect');
+            apiClient
+              .get('/auth/me')
+              .then((me: any) => me && AuthStorage.setUser(me))
+              .catch(async (e: any) => {
+                if (e?.statusCode === 401) {
+                  await AuthStorage.clear();
+                  if (navigationRef.isReady()) navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+                }
+              });
+            return;
+          }
           try {
             const me: any = await apiClient.get('/auth/me');
             if (me) {
               user = me;
               await AuthStorage.setUser(me);
             }
-          } catch (e) {
-            console.warn('[RootNavigator] Could not refresh /auth/me profile, clearing invalid session:', e);
-            await AuthStorage.clear();
-            setInitialRoute('Login');
-            return;
+          } catch (e: any) {
+            if (e?.statusCode === 401) {
+              await AuthStorage.clear();
+              setInitialRoute('Login');
+              return;
+            }
           }
 
           // Check real-time WhatsApp status from backend rather than stale cached field

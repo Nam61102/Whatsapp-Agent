@@ -13,11 +13,25 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
+  /**
+   * Adds pool settings to the connection string when it has none. The default pool is tiny, and with the
+   * database far from the server every query waits its turn, which made syncing and screens crawl.
+   */
+  static buildUrl(url: string | undefined): string | undefined {
+    if (!url) return url;
+    const add: string[] = [];
+    if (!/[?&]maxPoolSize=/i.test(url)) add.push(`maxPoolSize=${process.env.DB_MAX_POOL_SIZE || '25'}`);
+    if (!/[?&]minPoolSize=/i.test(url)) add.push('minPoolSize=2');
+    if (!/[?&]connectTimeoutMS=/i.test(url)) add.push('connectTimeoutMS=15000');
+    if (add.length === 0) return url;
+    return url + (url.includes('?') ? '&' : '?') + add.join('&');
+  }
+
   constructor() {
     super({
       datasources: {
         db: {
-          url: process.env.DATABASE_URL,
+          url: PrismaService.buildUrl(process.env.DATABASE_URL),
         },
       },
       log: ['warn', 'error'],

@@ -197,7 +197,7 @@ export class AIService implements OnModuleInit {
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://localhost:3000',
+            'HTTP-Referer': process.env.APP_URL || 'https://whatsapp-ai.local',
             'X-Title': 'VAI-4 WhatsApp AI',
           },
           body: JSON.stringify({

@@ -19,6 +19,7 @@
     "axios": "^1.7.9",
     "expo": "~52.0.30",
     "expo-asset": "~11.0.5",
+    "expo-constants": "~17.0.8",
     "expo-contacts": "~14.0.5",
     "expo-font": "~13.0.4",
     "expo-status-bar": "~2.0.1",

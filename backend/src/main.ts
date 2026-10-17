@@ -78,7 +78,7 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
   logger.log(`WhatsApp AI Backend running on port ${port}`);
-  logger.log(`Swagger OpenAPI Documentation available at http://localhost:${port}/api/docs and http://localhost:${port}/docs`);
+  logger.log(`Swagger OpenAPI Documentation available at /api/docs and /docs on port ${port}`);
 }
 
 bootstrap();

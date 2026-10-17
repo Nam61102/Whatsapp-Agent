@@ -59,6 +59,39 @@ export class WhatsAppEventService {
     private readonly chatTitles: ChatTitleService
   ) {}
 
+  /** Runs fn over items with at most `limit` in flight. The database is far away, so one call at a time is very slow. */
+  private async runLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<unknown>): Promise<void> {
+    let next = 0;
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const item = items[next++];
+        await fn(item).catch((err: any) => this.logger.warn(`Batch step failed: ${err.message}`));
+      }
+    });
+    await Promise.all(workers);
+  }
+
+  /** Saves LID -> phone pairs with three queries instead of one per pair. Returns how many pairs were handled. */
+  private async saveLidMappings(userId: string, whatsappAccountId: string, pairs: Map<string, string>): Promise<number> {
+    if (pairs.size === 0) return 0;
+    const lids = [...pairs.keys()];
+    const existing = await this.prisma.lIDMapping.findMany({
+      where: { whatsappAccountId, lid: { in: lids } },
+      select: { id: true, lid: true, phoneJid: true },
+    });
+    const have = new Map(existing.map((e) => [e.lid, e]));
+    const toCreate = lids.filter((l) => !have.has(l)).map((lid) => ({ userId, whatsappAccountId, lid, phoneJid: pairs.get(lid)! }));
+    if (toCreate.length) {
+      await this.prisma.lIDMapping.createMany({ data: toCreate }).catch(async () => {
+        // a parallel writer saved some of them first: keep going one by one
+        await this.runLimited(toCreate, 8, (row) => this.prisma.lIDMapping.create({ data: row }));
+      });
+    }
+    const changed = existing.filter((e) => e.phoneJid !== pairs.get(e.lid));
+    await this.runLimited(changed, 8, (e) => this.prisma.lIDMapping.update({ where: { id: e.id }, data: { phoneJid: pairs.get(e.lid)! } }));
+    return pairs.size;
+  }
+
   refreshChatTitles(userId: string, whatsappAccountId: string) {
     return this.storeChatTitles(userId, whatsappAccountId);
   }
@@ -198,28 +231,11 @@ export class WhatsAppEventService {
       },
     });
 
-    let lidCount = 0;
+    const backfillPairs = new Map<string, string>();
     for (const c of contactsWithLid) {
-      if (c.lid && c.phoneNumber) {
-        const phoneJid = `${c.phoneNumber.replace(/\D/g, '')}@s.whatsapp.net`;
-        await this.prisma.lIDMapping.upsert({
-          where: {
-            whatsappAccountId_lid: {
-              whatsappAccountId,
-              lid: c.lid,
-            },
-          },
-          update: { phoneJid },
-          create: {
-            userId,
-            whatsappAccountId,
-            lid: c.lid,
-            phoneJid,
-          },
-        });
-        lidCount++;
-      }
+      if (c.lid && c.phoneNumber) backfillPairs.set(c.lid, `${c.phoneNumber.replace(/\D/g, '')}@s.whatsapp.net`);
     }
+    const lidCount = await this.saveLidMappings(userId, whatsappAccountId, backfillPairs);
 
     if (lidCount === 0) {
       this.logger.log('LID backfill: no historical mappings available from current session');
@@ -287,7 +303,56 @@ export class WhatsAppEventService {
     return { total, processed, percentage: total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 100 };
   }
 
+  /** Users whose first chat history has arrived since they connected. */
+  private historySeen = new Set<string>();
+  private historyTimers = new Map<string, NodeJS.Timeout>();
+  private static readonly HISTORY_WAIT_MS = 4 * 60 * 1000;
+
+  /**
+   * WhatsApp sends old chats once, right after a device is linked, and in large chunks. Until the first
+   * chunk arrives there is nothing to count, so the bar used to sit at 0% without a word. Say what we are
+   * waiting for, and end the wait with a clear message if WhatsApp never sends it.
+   */
+  private async startHistoryWait(userId: string, whatsappAccountId: string) {
+    if (this.historySeen.has(userId) || this.historyTimers.has(userId)) return;
+    // Only a fresh account has anything to wait for; a reconnect of an account with chats does not.
+    const chats = await this.prisma.conversation.count({ where: { userId, whatsappAccountId } });
+    if (chats > 0) return;
+
+    this.updateSyncProgress(userId, {
+      status: 'SYNCING',
+      currentStage: 'CONTACTS',
+      progress: 3,
+      message: 'Connected. Waiting for WhatsApp to send your chats (usually 1 to 3 minutes)...',
+      canContinueToApp: true,
+    });
+    const timer = setTimeout(() => {
+      this.historyTimers.delete(userId);
+      if (this.historySeen.has(userId)) return;
+      this.updateSyncProgress(userId, {
+        status: 'COMPLETED',
+        currentStage: 'COMPLETED',
+        progress: 100,
+        message: 'WhatsApp did not send older chats this time. New messages will appear live. To fetch history again, unlink and link WhatsApp.',
+        canContinueToApp: true,
+        completedAt: new Date(),
+      });
+    }, WhatsAppEventService.HISTORY_WAIT_MS);
+    this.historyTimers.set(userId, timer);
+  }
+
+  private markHistoryArrived(userId: string) {
+    this.historySeen.add(userId);
+    const t = this.historyTimers.get(userId);
+    if (t) clearTimeout(t);
+    this.historyTimers.delete(userId);
+  }
+
   resetSyncProgress(userId: string) {
+    this.historySeen.delete(userId);
+    const t = this.historyTimers.get(userId);
+    if (t) clearTimeout(t);
+    this.historyTimers.delete(userId);
     this.syncProgressMap.delete(userId);
     this.eventsGateway.sendToUser(userId, 'sync:progress', null);
     this.eventsGateway.sendToUser(userId, 'whatsapp.sync', {
@@ -374,6 +439,8 @@ export class WhatsAppEventService {
         ...(update.status === 'DISCONNECTED' ? { lastDisconnectedAt: new Date() } : {}),
       },
     });
+
+    if (isConnected) this.startHistoryWait(userId, whatsappAccountId).catch(() => {});
 
     if (isConnected || isConnecting) {
       const targetConn = await this.prisma.whatsAppConnection.findFirst({
@@ -908,19 +975,15 @@ export class WhatsAppEventService {
 
     // WhatsApp gives the LID and phone JID together for saved contacts. Store that pair
     // so chats addressed by LID resolve to the same saved contact as the Contacts tab.
+    const lidPairs = new Map<string, string>();
     for (const c of contacts) {
       const phoneJid = [c.jid, c.id].find((j) => j && j.endsWith('@s.whatsapp.net'));
       const lidJid = [c.lid, c.id].find((j) => j && j.endsWith('@lid'));
-      if (phoneJid && lidJid) {
-        await this.prisma.lIDMapping
-          .upsert({
-            where: { whatsappAccountId_lid: { whatsappAccountId, lid: lidJid } },
-            update: { phoneJid },
-            create: { userId, whatsappAccountId, lid: lidJid, phoneJid },
-          })
-          .catch((err: any) => this.logger.warn(`LID mapping upsert failed: ${err.message}`));
-      }
+      if (phoneJid && lidJid) lidPairs.set(lidJid, phoneJid);
     }
+    await this.saveLidMappings(userId, whatsappAccountId, lidPairs).catch((err: any) =>
+      this.logger.warn(`LID mapping save failed: ${err.message}`)
+    );
 
     const normalised = contacts
       .filter((c) => c.id && c.id !== 'status@broadcast')
@@ -1044,8 +1107,7 @@ export class WhatsAppEventService {
     }>
   ) {
     let processed = 0;
-    for (const group of groups) {
-      if (!group.id) continue;
+    await this.runLimited(groups.filter((g) => g.id), 10, async (group) => {
       const groupJid = group.id;
       const groupName =
         group.subject && !isRawIdentifier(group.subject) ? group.subject.trim() : 'Unnamed Group';
@@ -1096,7 +1158,7 @@ export class WhatsAppEventService {
       } catch (err: any) {
         this.logger.warn(`Failed to upsert group ${group.id}: ${err.message}`);
       }
-    }
+    });
 
     const current = this.getWorkingProgress(userId);
     this.updateSyncProgress(userId, {
@@ -1347,6 +1409,17 @@ export class WhatsAppEventService {
     this.logger.log(
       `[HISTORY_SYNC] Received messaging-history.set for user ${userId} [Chats: ${chats.length}, Contacts: ${contacts.length}, Messages: ${rawMessages.length}, SyncType: ${payload.syncType}]`
     );
+
+    // The first chunk has arrived: show it straight away instead of staying at 0% until it is all saved.
+    this.markHistoryArrived(userId);
+    this.updateSyncProgress(userId, {
+      status: 'SYNCING',
+      currentStage: 'CONVERSATIONS',
+      progress: Math.max(5, this.getSyncProgress(userId).progress),
+      message: `WhatsApp is sending your chats: received ${chats.length} chats and ${rawMessages.length} messages. Saving them now...`,
+      canContinueToApp: true,
+    });
+
 
     const account = await this.prisma.whatsAppAccount.findUnique({
       where: { id: whatsappAccountId },

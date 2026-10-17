@@ -75,3 +75,50 @@ describe('sync progress numbers', () => {
     expect(svc.getSyncProgress('u1').progress).toBeLessThanOrEqual(25);
   });
 });
+
+describe('waiting for the first history', () => {
+  function svcWith(chatCount: number) {
+    const { svc, sent } = makeService();
+    svc.historySeen = new Set();
+    svc.historyTimers = new Map();
+    svc.prisma = { conversation: { count: async () => chatCount } };
+    return { svc, sent };
+  }
+  afterEach(() => jest.useRealTimers());
+
+  it('says what it is waiting for instead of sitting at 0%', async () => {
+    const { svc } = svcWith(0);
+    await svc.startHistoryWait('u1', 'a1');
+    const p = svc.getSyncProgress('u1');
+    expect(p.progress).toBeGreaterThan(0);
+    expect(p.message).toMatch(/Waiting for WhatsApp/i);
+    svc.markHistoryArrived('u1'); // clears the timer
+  });
+
+  it('does nothing for an account that already has chats (a plain reconnect)', async () => {
+    const { svc } = svcWith(12);
+    await svc.startHistoryWait('u1', 'a1');
+    expect(svc.getSyncProgress('u1').status).toBe('IDLE');
+    expect(svc.historyTimers.size).toBe(0);
+  });
+
+  it('ends the wait with a clear message if WhatsApp never sends history', async () => {
+    jest.useFakeTimers();
+    const { svc } = svcWith(0);
+    await svc.startHistoryWait('u1', 'a1');
+    jest.advanceTimersByTime(4 * 60 * 1000 + 100);
+    const p = svc.getSyncProgress('u1');
+    expect(p.status).toBe('COMPLETED');
+    expect(p.progress).toBe(100);
+    expect(p.message).toMatch(/did not send older chats/i);
+  });
+
+  it('does not end the wait once history has arrived', async () => {
+    jest.useFakeTimers();
+    const { svc } = svcWith(0);
+    await svc.startHistoryWait('u1', 'a1');
+    svc.markHistoryArrived('u1');
+    jest.advanceTimersByTime(5 * 60 * 1000);
+    expect(svc.getSyncProgress('u1').status).not.toBe('COMPLETED');
+  });
+});

@@ -393,6 +393,34 @@ export class BaileysAdapter implements IWhatsAppAdapter {
     }
   }
 
+  private waVersion: [number, number, number] | null = null;
+  private fullHistoryPolicy?: (userId: string) => Promise<boolean>;
+
+  /** The service tells the adapter whether a user needs the full WhatsApp history (long retention). */
+  setFullHistoryPolicy(fn: (userId: string) => Promise<boolean>) {
+    this.fullHistoryPolicy = fn;
+  }
+
+  private async wantsFullHistory(userId: string): Promise<boolean> {
+    try {
+      return this.fullHistoryPolicy ? await this.fullHistoryPolicy(userId) : false;
+    } catch {
+      return false;
+    }
+  }
+
+  /** WhatsApp version: looked up once, with a short timeout, then reused. The lookup used to block every connect. */
+  private async getWaVersion(): Promise<[number, number, number]> {
+    if (this.waVersion) return this.waVersion;
+    const fallback: [number, number, number] = [2, 3000, 1043857760];
+    const found = await Promise.race([
+      fetchLatestBaileysVersion().then((r) => r.version as [number, number, number]).catch(() => fallback),
+      new Promise<[number, number, number]>((r) => setTimeout(() => r(fallback), 2500)),
+    ]);
+    this.waVersion = found;
+    return found;
+  }
+
   async connect(
     userId: string,
     method: 'QR' | 'PAIRING_CODE' = 'QR',
@@ -445,10 +473,11 @@ export class BaileysAdapter implements IWhatsAppAdapter {
       fs.mkdirSync(sessionDir, { recursive: true });
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-    const { version } = await fetchLatestBaileysVersion().catch(() => ({
-      version: [2, 3000, 1043857760] as [number, number, number],
-    }));
+    const [{ state, saveCreds }, version, fullHistory] = await Promise.all([
+      useMultiFileAuthState(sessionDir),
+      this.getWaVersion(),
+      this.wantsFullHistory(userId),
+    ]);
 
     const initialState: ConnectionState = method === 'PAIRING_CODE' ? 'PAIRING_CODE_PENDING' : 'QR_PENDING';
     this.connectionStates.set(userId, initialState);
@@ -470,7 +499,8 @@ export class BaileysAdapter implements IWhatsAppAdapter {
       generateHighQualityLinkPreview: false,
       markOnlineOnConnect: false, // CRITICAL: Prevents sending presence before security keys are finalized
       browser: Browsers.ubuntu('Chrome'),
-      syncFullHistory: true,
+      // Full history is only worth the download when the user keeps a long window of messages.
+      syncFullHistory: fullHistory,
       shouldSyncHistoryMessage: () => true,
       defaultQueryTimeoutMs: 60000,
       connectTimeoutMs: 60000,
@@ -852,7 +882,8 @@ export class BaileysAdapter implements IWhatsAppAdapter {
       return { status: 'CONNECTED' };
     }
 
-    await new Promise((r) => setTimeout(r, 1200));
+    // Return the moment the QR code exists (usually well under a second) instead of always waiting.
+    for (let i = 0; i < 60 && !this.activeQrCodes.get(userId); i++) await new Promise((r) => setTimeout(r, 100));
     const initialQr = this.activeQrCodes.get(userId);
 
     return {
@@ -891,7 +922,7 @@ export class BaileysAdapter implements IWhatsAppAdapter {
     this.logger.log(`Requesting official Baileys pairing code for user ${userId} phone +${cleanPhone}`);
     
     // Wait briefly for socket WS handshake to complete before requesting pairing code
-    await new Promise((r) => setTimeout(r, 2500));
+    for (let i = 0; i < 50 && !(sock as any).ws?.isOpen; i++) await new Promise((r) => setTimeout(r, 100));
 
     try {
       const rawCode = await sock.requestPairingCode(cleanPhone);
