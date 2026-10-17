@@ -144,6 +144,21 @@ export const DashboardScreen = ({ navigation }: any) => {
 
   const syncProgressPercent = syncProgress?.progress || 0;
 
+  // What the card shows. 100% only when the server says the sync really finished; "nothing running" is not "done".
+  const syncPhase: 'running' | 'done' | 'idle' =
+    syncing || syncProgress?.status === 'SYNCING' || (syncProgress?.status && !['COMPLETED', 'IDLE'].includes(syncProgress.status) && syncProgress.progress > 0 && syncProgress.progress < 100)
+      ? 'running'
+      : syncProgress?.status === 'COMPLETED'
+      ? 'done'
+      : 'idle';
+  const syncShownPercent = syncPhase === 'done' ? 100 : syncPhase === 'running' ? Math.min(99, syncProgress?.progress || 0) : 0;
+  const syncShownMessage =
+    syncPhase === 'idle'
+      ? whatsappStatus === 'CONNECTED' || whatsappStatus === 'READY'
+        ? 'WhatsApp is connected. No sync is running right now.'
+        : 'WhatsApp is not connected.'
+      : syncProgress?.message || (syncPhase === 'done' ? 'WhatsApp data is up to date.' : 'Synchronizing...');
+
   useEffect(() => {
     navigation.setOptions({
       headerTitle: 'Dashboard',
@@ -403,21 +418,20 @@ export const DashboardScreen = ({ navigation }: any) => {
               <View style={styles.syncBoxTopRow}>
                 <View style={styles.syncBoxLeft}>
                   <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                    {whatsappStatus === 'SYNCING' || syncing ? (
+                    {syncPhase === 'running' ? (
                       <ActivityIndicator size="small" color="#34D399" />
-                    ) : (
+                    ) : syncPhase === 'done' ? (
                       <Text style={styles.checkMark}>✓</Text>
+                    ) : (
+                      <Ionicons name="pause-circle-outline" size={20} color="#A7F3D0" />
                     )}
                   </View>
                   <Text style={styles.syncBoxMessage} numberOfLines={1}>
-                    {syncProgress?.message ||
-                      (whatsappStatus === 'SYNCING'
-                        ? `Synchronizing messages (${syncProgress?.progress || 0}%)...`
-                        : 'WhatsApp Data Synchronization Complete!')}
+                    {syncShownMessage}
                   </Text>
                 </View>
                 <Text style={styles.syncBoxPercentage}>
-                  {syncProgress?.progress || (whatsappStatus === 'CONNECTED' ? 100 : 0)}%
+                  {syncPhase === 'idle' ? '—' : `${syncShownPercent}%`}
                 </Text>
               </View>
               <View style={styles.syncBoxTrack}>
@@ -425,10 +439,7 @@ export const DashboardScreen = ({ navigation }: any) => {
                   style={[
                     styles.syncBoxFill,
                     {
-                      width: `${Math.min(
-                        100,
-                        Math.max(0, syncProgress?.progress || (whatsappStatus === 'CONNECTED' ? 100 : 0))
-                      )}%`,
+                      width: `${syncShownPercent}%`,
                     },
                   ]}
                 />
