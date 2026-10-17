@@ -1446,14 +1446,19 @@ export class WhatsAppEventService {
     }
 
     // 2. Process Contacts (Phonebook saved contacts)
+    let contactsDone: Promise<unknown> = Promise.resolve();
     if (contacts.length > 0) {
       this.updateSyncProgress(userId, {
         currentStage: 'CONTACTS',
         message: `Synchronizing ${contacts.length} WhatsApp contacts...`,
         status: 'SYNCING',
       });
-      await this.handleContactsUpsert(userId, whatsappAccountId, contacts);
-      autoLinkAllLidConversations(this.prisma, userId, whatsappAccountId).catch(() => {});
+      // Runs alongside the message import below instead of in front of it, so your newest messages show up sooner.
+      contactsDone = this.handleContactsUpsert(userId, whatsappAccountId, contacts)
+        .then(() => {
+          autoLinkAllLidConversations(this.prisma, userId, whatsappAccountId).catch(() => {});
+        })
+        .catch((err: any) => this.logger.warn(`[HISTORY_SYNC] Contacts import failed: ${err.message}`));
     }
 
     // 4. Filter Messages by retention window
@@ -1494,20 +1499,26 @@ export class WhatsAppEventService {
     });
 
     // Newest messages are saved first, in slices, so chats fill in from latest to oldest.
-    const SLICE = 500;
-    for (let i = 0; i < validMessages.length; i += SLICE) {
+    // A small first slice puts the newest chats on screen within seconds; later slices are bigger because
+    // every slice costs several round trips to the database.
+    let sliceStart = 0;
+    while (sliceStart < validMessages.length) {
+      const size = sliceStart === 0 ? 150 : 1000;
+      const i = sliceStart;
+      sliceStart += size;
       await this.waitForLiveMessages();
       try {
         messagesProcessed += await this.bulkIngestHistoryMessages(
           userId,
           whatsappAccountId,
           accountPhone,
-          validMessages.slice(i, i + SLICE)
+          validMessages.slice(i, i + size)
         );
       } catch (err: any) {
         this.logger.error(`[HISTORY_SYNC] Bulk ingest error: ${err.message}`);
       }
     }
+    await contactsDone;
     if (validMessages.length > 0) {
       this.updateSyncProgress(userId, {
         currentStage: 'MESSAGES',

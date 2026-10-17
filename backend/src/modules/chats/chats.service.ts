@@ -112,7 +112,8 @@ export class ChatsService {
     // inside the chat. The copy saved on the conversation can lag behind (history sync, retention).
     // One query for all chats on the page, and the total is counted at the same time.
     const [latestByChat, total] = await Promise.all([
-      this.latestMessages(conversations.map((c) => c.id)),
+      // Only chats whose saved preview is missing need the lookup; the rest are already right (kept in step at ingest).
+      this.latestMessages(conversations.filter((c) => !c.lastMessageText || !c.lastMessageAt).map((c) => c.id)),
       this.prisma.conversation.count({ where: whereClause }),
     ]);
     const withLatest = conversations.map((c) => {
