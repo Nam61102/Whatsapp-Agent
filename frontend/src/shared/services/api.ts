@@ -7,7 +7,7 @@ export { API_BASE_URL };
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 45000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,9 +34,15 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (response) => response.data,
   async (error) => {
-    // A sleeping server (free hosting) or a dropped connection: retry reads once before giving up.
+    // Retry on cold start, 502 Bad Gateway (Render deployment/spin-up), or network drop
     const cfg: any = error.config;
-    if (cfg && !error.response && (cfg.method || 'get').toLowerCase() === 'get' && (cfg.__retries || 0) < 1) {
+    const isColdStartOrNetwork =
+      !error.response ||
+      error.response.status === 502 ||
+      error.response.status === 503 ||
+      error.code === 'ECONNABORTED';
+
+    if (cfg && isColdStartOrNetwork && (cfg.method || 'get').toLowerCase() === 'get' && (cfg.__retries || 0) < 3) {
       cfg.__retries = (cfg.__retries || 0) + 1;
       await new Promise((r) => setTimeout(r, 1500 * cfg.__retries));
       return apiClient.request(cfg);
