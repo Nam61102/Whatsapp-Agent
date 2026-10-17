@@ -202,6 +202,15 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
       }
     });
 
+    const unsubChatsUpdated = socketService.on('chats:updated', () => {
+      fetchMessages();
+    });
+    const unsubConvUpdated = socketService.on('conversation:updated', (data: any) => {
+      if (data && (data.chatId === chatId || data.id === chatId)) {
+        fetchMessages();
+      }
+    });
+
     return () => {
       unsubNew();
       unsubMsgNew();
@@ -210,6 +219,8 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
       unsubStatus();
       unsubDelivered();
       unsubRead();
+      unsubChatsUpdated();
+      unsubConvUpdated();
     };
   }, [chatId, fetchMessages, fetchSuggestions, conversation?.externalChatId]);
 
@@ -383,6 +394,32 @@ export const ChatDetailScreen = ({ route, navigation }: any) => {
                   )}
                 </TouchableOpacity>
               ) : null
+            }
+            ListEmptyComponent={
+              <View style={{ alignItems: 'center', justifyContent: 'center', padding: 32, marginTop: 40 }}>
+                <Ionicons name="chatbubbles-outline" size={48} color="#94A3B8" />
+                <Text style={{ fontSize: 16, fontWeight: '600', color: '#475569', marginTop: 12 }}>
+                  No messages stored yet
+                </Text>
+                <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 6, maxWidth: 280 }}>
+                  Historical messages may still be syncing from WhatsApp or were not yet downloaded for this chat.
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    marginTop: 16,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    backgroundColor: Colors.primary,
+                    borderRadius: 20,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                  onPress={() => fetchMessages()}
+                >
+                  <Ionicons name="refresh" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 14 }}>Refresh Messages</Text>
+                </TouchableOpacity>
+              </View>
             }
           />
         )}

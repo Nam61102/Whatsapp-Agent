@@ -550,7 +550,7 @@ export class WhatsAppEventService {
     const settings = await this.prisma.userSettings.findUnique({
       where: { userId },
     });
-    const retentionDays = settings?.retentionDays || 3;
+    const retentionDays = settings?.retentionDays || 365;
     const retentionCutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
     if (timestamp < retentionCutoff) {
       this.logger.debug(
@@ -1210,7 +1210,7 @@ export class WhatsAppEventService {
     // Like WhatsApp: the chat list comes from chat metadata (last activity time), not from
     // messages. Newest chats first, limited to the user's retention window.
     const settings = await this.prisma.userSettings.findUnique({ where: { userId } });
-    const retentionCutoffMs = Date.now() - (settings?.retentionDays || 3) * 24 * 60 * 60 * 1000;
+    const retentionCutoffMs = Date.now() - (settings?.retentionDays || 365) * 24 * 60 * 60 * 1000;
     const activityDate = (ts: any): Date | null => {
       const n = typeof ts === 'number' ? ts : Number(ts);
       if (!n || Number.isNaN(n)) return null;
@@ -1431,7 +1431,7 @@ export class WhatsAppEventService {
     const settings = await this.prisma.userSettings.findUnique({
       where: { userId },
     });
-    const retentionDays = settings?.retentionDays || 3;
+    const retentionDays = settings?.retentionDays || 365;
     const retentionCutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
 
     // 1. Process Chats / Conversations FIRST
@@ -2050,7 +2050,7 @@ export class WhatsAppEventService {
       seenInBatch.add(extId);
       const conv = convMap.get(jid);
       const contact = contactMap.get(jid);
-      if (!conv || !contact) continue;
+      if (!conv) continue;
       const isFromMe = Boolean(vm.m.key.fromMe);
       const isGroup = jid.endsWith('@g.us');
       const { textContent } = unwrapMessage(vm.m.message);
@@ -2069,7 +2069,7 @@ export class WhatsAppEventService {
         conversationId: conv.id,
         externalMessageId: extId,
         externalSenderId: senderJid,
-        senderContactId: isFromMe ? null : contact.id,
+        senderContactId: isFromMe ? null : (contact?.id || null),
         senderType: isFromMe ? 'ME' : 'CONTACT',
         messageType: 'TEXT',
         textContent,

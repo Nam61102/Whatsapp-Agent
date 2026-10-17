@@ -78,7 +78,7 @@ export class SettingsService {
       settings = await this.prisma.userSettings.create({
         data: {
           userId: realUserId,
-          retentionDays: 3,
+          retentionDays: 365,
           autoAIAnalysis: true,
           realtimeAI: true,
           aiReplySuggestions: true,

@@ -66,7 +66,7 @@ export class AuthService implements OnModuleInit {
             name: 'User',
             userSettings: {
               create: {
-                retentionDays: 3,
+                retentionDays: 365,
                 autoAIAnalysis: true,
                 notificationsEnabled: true,
               },
@@ -119,7 +119,7 @@ export class AuthService implements OnModuleInit {
         name: dto.name.trim(),
         userSettings: {
           create: {
-            retentionDays: 3,
+            retentionDays: 365,
             autoAIAnalysis: true,
             notificationsEnabled: true,
           },

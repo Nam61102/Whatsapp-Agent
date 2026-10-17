@@ -35,7 +35,7 @@ export class RetentionService implements OnModuleInit {
     const purgedStoragePaths: string[] = [];
 
     for (const setting of userSettings) {
-      const days = setting.retentionDays || 3;
+      const days = setting.retentionDays || 365;
       const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
       for (const account of setting.user.whatsappAccounts) {
