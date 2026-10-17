@@ -1,14 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { accountCache } from '../../shared/ttl-cache';
 
 @Injectable()
 export class ChatsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async getAccount(userId: string) {
-    let account = await this.prisma.whatsAppAccount.findFirst({
-      where: { userId },
-    });
+    let account = await accountCache.getOrLoad(userId, () => this.prisma.whatsAppAccount.findFirst({ where: { userId } }));
     if (!account) {
       account = await this.prisma.whatsAppAccount.create({
         data: {
@@ -18,6 +17,7 @@ export class ChatsService {
           provider: 'BAILEYS',
         },
       });
+      accountCache.set(userId, account);
     }
     return account;
   }

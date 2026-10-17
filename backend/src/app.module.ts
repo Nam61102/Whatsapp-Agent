@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { GatewayModule } from './modules/gateway/gateway.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -12,6 +13,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { RetentionModule } from './modules/retention/retention.module';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     PrismaModule,
     GatewayModule,

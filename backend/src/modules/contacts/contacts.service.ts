@@ -4,6 +4,7 @@ import { formatPhoneNumber, isRawIdentifier } from '../../shared/name-resolver';
 import { findMatchingConversationsForContact } from '../../shared/contact-resolver';
 import { DeviceContactsService } from '../../shared/device-contacts.service';
 import { phoneKey, isHumanName, pickBestContact } from '../../shared/contact-name-policy';
+import { accountCache } from '../../shared/ttl-cache';
 
 @Injectable()
 export class ContactsService {
@@ -13,9 +14,7 @@ export class ContactsService {
   ) {}
 
   private async getAccount(userId: string) {
-    let account = await this.prisma.whatsAppAccount.findFirst({
-      where: { userId },
-    });
+    let account = await accountCache.getOrLoad(userId, () => this.prisma.whatsAppAccount.findFirst({ where: { userId } }));
     if (!account) {
       account = await this.prisma.whatsAppAccount.create({
         data: {
@@ -25,6 +24,7 @@ export class ContactsService {
           provider: 'BAILEYS',
         },
       });
+      accountCache.set(userId, account);
     }
     return account;
   }

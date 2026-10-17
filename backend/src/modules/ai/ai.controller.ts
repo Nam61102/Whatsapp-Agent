@@ -22,6 +22,7 @@ import { AIQueueService } from './ai-queue.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findChatMessagesForContact } from '../../shared/contact-resolver';
+import { accountCache } from '../../shared/ttl-cache';
 
 /** Bump when the profile format changes; older saved profiles are rebuilt. */
 const PROFILE_VERSION = 'v2-likes';
@@ -38,9 +39,7 @@ export class AIController {
   ) {}
 
   private async getAccount(userId: string) {
-    const account = await this.prisma.whatsAppAccount.findFirst({
-      where: { userId },
-    });
+    const account = await accountCache.getOrLoad(userId, () => this.prisma.whatsAppAccount.findFirst({ where: { userId } }));
     if (!account) {
       throw new NotFoundException('No WhatsApp account connected for this user');
     }

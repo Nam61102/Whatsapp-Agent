@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { AIService } from '../ai/ai.service';
 import { ALL_STATUSES, PRIORITIES } from '../ai/ai-extraction.types';
+import { accountCache } from '../../shared/ttl-cache';
 
 @Injectable()
 export class ExtractionsService {
@@ -11,9 +12,7 @@ export class ExtractionsService {
   ) {}
 
   private async getAccount(userId: string) {
-    const account = await this.prisma.whatsAppAccount.findFirst({
-      where: { userId },
-    });
+    const account = await accountCache.getOrLoad(userId, () => this.prisma.whatsAppAccount.findFirst({ where: { userId } }));
     if (!account) {
       throw new NotFoundException('WhatsApp account not found');
     }

@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
 import { AIService } from '../ai/ai.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { accountCache } from '../../shared/ttl-cache';
 
 @Injectable()
 export class MessagesService {
@@ -21,9 +22,7 @@ export class MessagesService {
   ) {}
 
   private async getAccount(userId: string) {
-    const account = await this.prisma.whatsAppAccount.findFirst({
-      where: { userId },
-    });
+    const account = await accountCache.getOrLoad(userId, () => this.prisma.whatsAppAccount.findFirst({ where: { userId } }));
     if (!account) {
       throw new NotFoundException('WhatsApp account not found');
     }
