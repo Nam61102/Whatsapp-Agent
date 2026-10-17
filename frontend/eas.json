@@ -14,9 +14,9 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-lf5n.onrender.com",
-        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-lf5n.onrender.com/api/v1",
-        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-lf5n.onrender.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-msxi.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-msxi.onrender.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-msxi.onrender.com"
       }
     },
     "production": {
@@ -25,9 +25,9 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-lf5n.onrender.com",
-        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-lf5n.onrender.com/api/v1",
-        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-lf5n.onrender.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-msxi.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-msxi.onrender.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-msxi.onrender.com"
       }
     }
   },
