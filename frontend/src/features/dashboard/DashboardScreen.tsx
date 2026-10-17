@@ -37,6 +37,7 @@ export const DashboardScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<string>('DISCONNECTED');
+  const [waStats, setWaStats] = useState<any>(null);
   const [syncProgress, setSyncProgress] = useState<any>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -79,6 +80,7 @@ export const DashboardScreen = ({ navigation }: any) => {
         }),
         part(apiClient.get('/whatsapp/status'), (r) => {
           if (r.status) setWhatsappStatus(r.status);
+          if (r.stats) setWaStats(r.stats);
         }),
         part(apiClient.get('/whatsapp/sync-progress'), (r) => setSyncProgress(r)),
         part(apiClient.get('/auth/me'), (r) => {
@@ -152,6 +154,10 @@ export const DashboardScreen = ({ navigation }: any) => {
       ? 'done'
       : 'idle';
   const syncShownPercent = syncPhase === 'done' ? 100 : syncPhase === 'running' ? Math.min(99, syncProgress?.progress || 0) : 0;
+  // Chats arrive with the contact list, but the messages inside them are sent by WhatsApp only once, when the
+  // account is linked. Chats without messages mean that batch never arrived, and Re-sync cannot bring it back.
+  const connectedNow = whatsappStatus === 'CONNECTED' || whatsappStatus === 'READY';
+  const missingMessages = connectedNow && syncPhase !== 'running' && (waStats?.chats ?? 0) > 5 && (waStats?.messages ?? 0) < 5;
   const syncShownMessage =
     syncPhase === 'idle'
       ? whatsappStatus === 'CONNECTED' || whatsappStatus === 'READY'
@@ -414,7 +420,7 @@ export const DashboardScreen = ({ navigation }: any) => {
             </View>
 
             {/* Overall Sync Progress Banner */}
-            <View style={[styles.syncProgressBox, { minHeight: 120, justifyContent: 'center' }]}>
+            <View style={[styles.syncProgressBox, { minHeight: 96, justifyContent: 'center' }]}>
               <View style={styles.syncBoxTopRow}>
                 <View style={styles.syncBoxLeft}>
                   <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
@@ -461,9 +467,29 @@ export const DashboardScreen = ({ navigation }: any) => {
               </View>
             )}
 
+            {missingMessages && (
+              <View style={{ marginTop: 12, padding: 14, borderRadius: 12, backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A' }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: '#92400E', marginBottom: 4 }}>Messages did not arrive</Text>
+                <Text style={{ fontSize: 13, color: '#78350F', lineHeight: 19 }}>
+                  Your {waStats.chats} chats and {waStats.contacts} contacts are here, but WhatsApp has only sent {waStats.messages} messages. WhatsApp
+                  sends message history just once, when you link the account, and Re-sync cannot fetch it again. To receive it: unlink
+                  WhatsApp in Settings, then link it again and keep the app open for a couple of minutes.
+                </Text>
+                <TouchableOpacity
+                  style={{ marginTop: 10, backgroundColor: '#B45309', borderRadius: 10, paddingVertical: 11, alignItems: 'center' }}
+                  onPress={() => {
+                    setShowSyncModal(false);
+                    navigation.navigate('SettingsTab');
+                  }}
+                >
+                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>Go to Settings to link again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Concurrent Multi-process Progress Bars */}
             {syncProgress && (
-              <View style={[styles.multiStageContainer, { minHeight: 170 }]}>
+              <View style={styles.multiStageContainer}>
                 {/* Contacts Stage */}
                 {(syncProgress.contacts?.total > 0 || syncProgress.currentStage === 'CONTACTS') && (
                   <View style={styles.subStageBox}>
