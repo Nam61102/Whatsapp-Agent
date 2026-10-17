@@ -128,7 +128,7 @@ export interface WhatsAppAdapterEvents {
 
 export interface IWhatsAppAdapter {
   initialize(userId: string): Promise<void>;
-  initializeRegisteredSessions(): Promise<void>;
+  initializeRegisteredSessions(shouldRestore?: (userId: string) => Promise<boolean>): Promise<void>;
   connect(userId: string, method?: 'QR' | 'PAIRING_CODE', forceFresh?: boolean): Promise<{ status: ConnectionState; qrCode?: string }>;
   requestPairingCode(userId: string, phoneNumber: string): Promise<string>;
   sendMessage(userId: string, remoteJid: string, text: string): Promise<void>;

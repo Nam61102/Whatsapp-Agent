@@ -9,10 +9,26 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-lf5n.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-lf5n.onrender.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-lf5n.onrender.com"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_BACKEND_URL": "https://whatsapp-agent-lf5n.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://whatsapp-agent-lf5n.onrender.com/api/v1",
+        "EXPO_PUBLIC_SOCKET_URL": "https://whatsapp-agent-lf5n.onrender.com"
+      }
     }
   },
   "submit": {

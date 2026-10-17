@@ -126,7 +126,7 @@ export class BaileysAdapter implements IWhatsAppAdapter {
     }
   }
 
-  async initializeRegisteredSessions(): Promise<void> {
+  async initializeRegisteredSessions(shouldRestore?: (userId: string) => Promise<boolean>): Promise<void> {
     const sessionsBase = path.join(process.cwd(), 'sessions');
     if (!fs.existsSync(sessionsBase)) return;
 
@@ -142,7 +142,12 @@ export class BaileysAdapter implements IWhatsAppAdapter {
             const credsRaw = fs.readFileSync(credsPath, 'utf-8');
             const creds = JSON.parse(credsRaw);
             const isRegistered = creds.registered || Boolean(creds.me);
-            if (isRegistered) {
+            if (isRegistered && shouldRestore && !(await shouldRestore(userId))) {
+              this.logger.warn(
+                `Skipping saved WhatsApp session ${userId}: that user does not exist in the connected database. ` +
+                  `Restoring it would save chats under a user nobody can log in as. (Session files are left untouched.)`
+              );
+            } else if (isRegistered) {
               this.logger.log(`Found active registered session for user ${userId}. Restoring connection...`);
               this.connect(userId, 'QR', false).catch((err) => {
                 this.logger.error(`Error auto-restoring session for ${userId}: ${err.message}`);
