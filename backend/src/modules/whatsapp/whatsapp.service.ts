@@ -318,35 +318,21 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
   async getStatus(userId: string, clientSessionId?: string) {
     const account = await this.getOrCreateAccount(userId);
-    const countContacts = await this.prisma.contact.count({
-      where: {
-        userId: account.userId,
-        whatsappAccountId: account.id,
-        isGroup: false,
-        // Only count contacts truly saved in the connected WhatsApp's address book
-        isSavedContact: true,
-      },
-    });
-    const countGroups = await this.prisma.conversation.count({
-      where: { userId: account.userId, whatsappAccountId: account.id, chatType: 'GROUP', lastMessageAt: { not: null } },
-    });
-    const countIndividualChats = await this.prisma.conversation.count({
-      where: { userId: account.userId, whatsappAccountId: account.id, chatType: 'INDIVIDUAL', lastMessageAt: { not: null } },
-    });
-    const countChannelChats = await this.prisma.conversation.count({
-      where: { userId: account.userId, whatsappAccountId: account.id, chatType: 'CHANNEL', lastMessageAt: { not: null } },
-    });
-    const countChats = await this.prisma.conversation.count({
-      where: { userId: account.userId, whatsappAccountId: account.id, lastMessageAt: { not: null } },
-    });
-    const countMessages = await this.prisma.message.count({
-      where: { userId: account.userId, whatsappAccountId: account.id },
-    });
-
-    const activeConnection = await this.prisma.whatsAppConnection.findFirst({
-      where: { userId: account.userId, whatsappAccountId: account.id, isActive: true },
-      orderBy: { createdAt: 'desc' },
-      select: {
+    // All of these are independent, so they run together: one round trip to the database instead of seven.
+    const own = { userId: account.userId, whatsappAccountId: account.id };
+    const active = { ...own, lastMessageAt: { not: null } } as const;
+    const [countContacts, countGroups, countIndividualChats, countChannelChats, countChats, countMessages, activeConnection] = await Promise.all([
+      // Only count contacts truly saved in the connected WhatsApp's address book
+      this.prisma.contact.count({ where: { ...own, isGroup: false, isSavedContact: true } }),
+      this.prisma.conversation.count({ where: { ...active, chatType: 'GROUP' } }),
+      this.prisma.conversation.count({ where: { ...active, chatType: 'INDIVIDUAL' } }),
+      this.prisma.conversation.count({ where: { ...active, chatType: 'CHANNEL' } }),
+      this.prisma.conversation.count({ where: active }),
+      this.prisma.message.count({ where: own }),
+      this.prisma.whatsAppConnection.findFirst({
+        where: { ...own, isActive: true },
+        orderBy: { createdAt: 'desc' },
+        select: {
         id: true,
         connectionStatus: true,
         connectionType: true,
@@ -357,7 +343,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         lastHeartbeatAt: true,
         createdAt: true,
       },
-    });
+      }),
+    ]);
 
     const currentQr = this.baileysAdapter.getQRCode(account.userId);
     const liveStatus = this.baileysAdapter.getConnectionState(account.userId);

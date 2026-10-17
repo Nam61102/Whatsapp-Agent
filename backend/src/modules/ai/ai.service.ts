@@ -1989,9 +1989,13 @@ Return ONLY valid JSON, no markdown:
    * Dashboard Overview data for NRYN Action Center.
    */
   async getDashboardOverview(userId: string, whatsappAccountId: string) {
-    const settings = await this.prisma.userSettings.findUnique({ where: { userId } });
-    const autoAIAnalysis = settings?.autoAIAnalysis ?? true;
-    const tokenStats = await this.getTokenUsageStats(userId, whatsappAccountId);
+    // Settings, token stats and the action items do not depend on each other, so they are fetched together.
+    // (Items are fetched even when AI is off and then discarded: that costs nothing extra in waiting time.)
+    const [tokenStats, actionItems] = await Promise.all([
+      this.getTokenUsageStats(userId, whatsappAccountId),
+      this.getActionCenterItems(userId, whatsappAccountId, 50, 'ALL').catch(() => [] as any[]),
+    ]);
+    const autoAIAnalysis = tokenStats.autoAIAnalysis;
 
     if (!autoAIAnalysis) {
       return {
@@ -2001,8 +2005,6 @@ Return ONLY valid JSON, no markdown:
         tokenStats,
       };
     }
-
-    const actionItems = await this.getActionCenterItems(userId, whatsappAccountId, 50, 'ALL');
 
     return {
       aiEnabled: true,
