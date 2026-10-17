@@ -16,8 +16,20 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: '*',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, server-to-server) or reflect incoming origin
+      callback(null, true);
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-client-session-id',
+      'x-device-info',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
     credentials: true,
   });
 
