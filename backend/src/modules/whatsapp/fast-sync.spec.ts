@@ -57,7 +57,7 @@ describe('database pool settings', () => {
   it('adds pool options once and keeps ones already present', () => {
     const base = 'mongodb://u:p@host:27017/vai4?ssl=true&replicaSet=rs';
     const out = PrismaService.buildUrl(base)!;
-    expect(out).toContain('maxPoolSize=25');
+    expect(out).toContain('maxPoolSize=8');
     expect(out).toContain('connectTimeoutMS=15000');
     expect(out.startsWith(base + '&')).toBe(true);
     expect(PrismaService.buildUrl('mongodb://h/db?maxPoolSize=5&minPoolSize=1&connectTimeoutMS=1')).toBe('mongodb://h/db?maxPoolSize=5&minPoolSize=1&connectTimeoutMS=1');

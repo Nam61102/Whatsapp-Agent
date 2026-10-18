@@ -21,8 +21,19 @@ import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
 
 // How much WhatsApp history the app keeps. The first sync only loads messages inside this window.
-const RETENTION_CHOICES = [3, 7, 15, 30, 60, 90]; // same options as Settings
-const DEFAULT_RETENTION_DAYS = 3;
+const RETENTION_CHOICES = [3, 7, 15, 30, 90, 365]; // Clean 6-option symmetric grid
+const DEFAULT_RETENTION_DAYS = 365;
+
+const getRetentionSubtext = (days: number): string => {
+  if (days === 3) return 'Fastest';
+  if (days === 7) return '1 Week';
+  if (days === 15) return '2 Weeks';
+  if (days === 30) return '1 Month';
+  if (days === 60) return '2 Months';
+  if (days === 90) return '3 Months';
+  if (days >= 365) return '1 Year';
+  return `${days} Days`;
+};
 
 export const WhatsAppConnectScreen = ({ navigation }: any) => {
   // True once a QR code / pairing code was shown in this session: the user is really linking.
@@ -397,7 +408,7 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
         <Text style={styles.retentionSub}>
           Choose how much of your WhatsApp data is stored in the app. Messages older than this are removed automatically.
         </Text>
-        <View style={styles.retentionRow}>
+        <View style={styles.retentionGrid}>
           {Array.from(new Set([...RETENTION_CHOICES, retentionDays]))
             .sort((a, b) => a - b)
             .map((days) => {
@@ -409,12 +420,14 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
                   style={[styles.retentionPill, active && styles.retentionPillActive, locked && { opacity: 0.6 }]}
                   onPress={() => chooseRetention(days)}
                   disabled={locked}
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                 >
-                  <Text style={[styles.retentionPillText, active && styles.retentionPillTextActive]}>{days} Days</Text>
-                  {days === DEFAULT_RETENTION_DAYS && (
-                    <Text style={[styles.retentionTag, active && { color: '#D1FAE5' }]}>Recommended</Text>
-                  )}
+                  <Text style={[styles.retentionPillDays, active && styles.retentionPillDaysActive]}>
+                    {days >= 365 ? '365 Days' : `${days} Days`}
+                  </Text>
+                  <Text style={[styles.retentionPillSub, active && styles.retentionPillSubActive]}>
+                    {getRetentionSubtext(days)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -673,16 +686,6 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
       </View>
-
-      <TouchableOpacity
-        style={styles.bottomLogoutButton}
-        onPress={handleLogout}
-        disabled={loading}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
-        <Text style={styles.bottomLogoutButtonText}>Log Out of Account</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -691,29 +694,65 @@ const styles = StyleSheet.create({
   retentionCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
+    padding: 18,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#D1FAE5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   retentionTitle: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 4 },
-  retentionSub: { fontSize: 13, color: '#475569', lineHeight: 18, marginBottom: 12 },
-  retentionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  retentionSub: { fontSize: 13, color: '#475569', lineHeight: 18, marginBottom: 14 },
+  retentionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'space-between',
+  },
   retentionPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    width: '31%',
+    minHeight: 56,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
     borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-    borderWidth: 1,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
     alignItems: 'center',
-    minWidth: 78,
+    justifyContent: 'center',
   },
-  retentionPillActive: { backgroundColor: '#0B5D52', borderColor: '#0B5D52' },
-  retentionPillText: { fontSize: 14, fontWeight: '700', color: '#334155' },
-  retentionPillTextActive: { color: '#FFFFFF' },
-  retentionTag: { fontSize: 10, fontWeight: '700', color: '#0B5D52', marginTop: 2 },
-  retentionHint: { fontSize: 12, color: '#64748B', marginTop: 10, lineHeight: 16 },
+  retentionPillActive: {
+    backgroundColor: '#005D4B',
+    borderColor: '#005D4B',
+    elevation: 2,
+    shadowColor: '#005D4B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  retentionPillDays: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  retentionPillDaysActive: {
+    color: '#FFFFFF',
+  },
+  retentionPillSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  retentionPillSubActive: {
+    color: '#A7F3D0',
+  },
+  retentionHint: { fontSize: 12, color: '#64748B', marginTop: 12, lineHeight: 16 },
   noteBox: {
     backgroundColor: '#FEF9C3',
     borderRadius: 10,
@@ -1184,25 +1223,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
-  },
-  bottomLogoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    marginBottom: 36,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FECACA',
-    alignSelf: 'center',
-  },
-  bottomLogoutButtonText: {
-    color: '#DC2626',
-    fontSize: 14,
-    fontWeight: '700',
   },
   conflictLogoutButton: {
     backgroundColor: '#FEF2F2',

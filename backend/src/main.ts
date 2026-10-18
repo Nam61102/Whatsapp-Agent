@@ -87,6 +87,12 @@ async function bootstrap() {
     },
   });
 
+  // Memory is logged once a minute so a restart loop on a small host shows its cause in the platform logs.
+  setInterval(() => {
+    const m = process.memoryUsage();
+    logger.log(`[MEMORY] rss=${Math.round(m.rss / 1048576)}MB heap=${Math.round(m.heapUsed / 1048576)}MB`);
+  }, 60_000).unref();
+
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
   logger.log(`WhatsApp AI Backend running on port ${port}`);

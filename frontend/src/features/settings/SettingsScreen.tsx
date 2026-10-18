@@ -21,7 +21,7 @@ import { IconText } from '../../shared/components/IconText';
 import { Avatar } from '../../shared/components/Avatar';
 import { Sticker } from '../../shared/components/Sticker';
 
-const RETENTION_OPTIONS = [3, 7, 15, 30, 60, 90];
+const RETENTION_OPTIONS = [3, 7, 15, 30, 90, 365];
 
 export const SettingsScreen = ({ navigation }: any) => {
   const [user, setUser] = useState<any>(AuthStorage.getUser());
@@ -426,7 +426,9 @@ export const SettingsScreen = ({ navigation }: any) => {
         </Text>
 
         <View style={styles.retentionRow}>
-          {RETENTION_OPTIONS.map((days) => (
+          {Array.from(new Set([...RETENTION_OPTIONS, settings?.retentionDays || 365]))
+            .sort((a, b) => a - b)
+            .map((days) => (
             <TouchableOpacity
               key={days}
               style={[
@@ -441,7 +443,7 @@ export const SettingsScreen = ({ navigation }: any) => {
                   settings?.retentionDays === days && styles.retentionTextActive,
                 ]}
               >
-                {days} Days
+                {days >= 365 ? '365 Days' : `${days} Days`}
               </Text>
             </TouchableOpacity>
           ))}
@@ -624,16 +626,19 @@ const styles = StyleSheet.create({
   },
   retentionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     gap: 8,
   },
   retentionPill: {
-    flex: 1,
+    width: '31%',
+    minHeight: 44,
     paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#F3F6F8',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
   },
   retentionPillActive: {
