@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,10 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../shared/theme/colors';
 import { apiClient } from '../../shared/services/api';
-import { markFirstSyncPending } from '../../shared/utils/firstSync';
+import { markFirstSyncPending, clearFirstSync } from '../../shared/utils/firstSync';
 import { socketService } from '../../shared/services/socket';
 import { AuthStorage } from '../../shared/services/authStorage';
 import { Illustration } from '../../shared/components/Illustration';
@@ -80,6 +81,49 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
     aiAnalysis?: { total: number; processed: number; percentage: number };
     canContinueToApp?: boolean;
   } | null>(null);
+
+  const handleLogout = () => {
+    const doLogout = async () => {
+      setLoading(true);
+      try {
+        await apiClient.post('/whatsapp/disconnect', {}, { timeout: 15000 }).catch(() => {});
+        await clearFirstSync();
+      } catch (err) {
+        console.warn('WhatsApp disconnect on logout:', err);
+      } finally {
+        await AuthStorage.clear();
+        socketService.disconnect();
+        setLoading(false);
+        navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Are you sure you want to log out of your account?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert('Log Out', 'Are you sure you want to log out of your account?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: doLogout },
+      ]);
+    }
+  };
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={handleLogout}
+          style={styles.headerLogoutButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="log-out-outline" size={17} color="#FFFFFF" style={{ marginRight: 4 }} />
+          <Text style={styles.headerLogoutText}>Logout</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, loading]);
 
   const fetchStatusAndConnect = async (targetMethod: 'QR' | 'PAIRING_CODE' = method) => {
     setLoading(true);
@@ -491,6 +535,14 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
               >
                 <Text style={styles.refreshButtonText}>🔄 Check Again / Refresh</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.conflictLogoutButton}
+                onPress={handleLogout}
+                disabled={loading}
+              >
+                <Text style={styles.conflictLogoutButtonText}>🚪 Log Out of Account</Text>
+              </TouchableOpacity>
             </View>
           </View>
         ) : method === 'QR' ? (
@@ -621,6 +673,16 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
       </View>
+
+      <TouchableOpacity
+        style={styles.bottomLogoutButton}
+        onPress={handleLogout}
+        disabled={loading}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="log-out-outline" size={18} color="#DC2626" style={{ marginRight: 6 }} />
+        <Text style={styles.bottomLogoutButtonText}>Log Out of Account</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -1108,5 +1170,53 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  headerLogoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 8,
+    marginRight: 4,
+  },
+  headerLogoutText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  bottomLogoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+    marginBottom: 36,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    alignSelf: 'center',
+  },
+  bottomLogoutButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  conflictLogoutButton: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    marginTop: 4,
+  },
+  conflictLogoutButtonText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
