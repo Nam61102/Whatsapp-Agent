@@ -3,6 +3,7 @@ import { NavigationContainer, getFocusedRouteNameFromRoute, createNavigationCont
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { LayoutDashboard, MessageSquare, Users, Zap, Settings as SettingsIcon } from 'lucide-react-native';
 import { Text, View, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
 
 export const navigationRef = createNavigationContainerRef<any>();
@@ -111,18 +112,25 @@ function MainTabNavigator() {
             marginTop: 0,
           },
           tabBarIcon: ({ focused, color }) => {
-            // Each tab has its own icon (Dashboard and Action Center used to share one emoji).
-            const names: Record<string, [any, any]> = {
-              DashboardTab: ['grid', 'grid-outline'],
-              ChatsTab: ['chatbubbles', 'chatbubbles-outline'],
-              ContactsTab: ['people', 'people-outline'],
-              ExtractionsTab: ['flash', 'flash-outline'],
-              SettingsTab: ['settings', 'settings-outline'],
-            };
-            const [on, off] = names[route.name] || ['ellipse', 'ellipse-outline'];
+            const iconSize = 22;
+            const strokeWidth = focused ? 2.3 : 1.8;
+
+            let IconComp = LayoutDashboard;
+            if (route.name === 'DashboardTab') {
+              IconComp = LayoutDashboard;
+            } else if (route.name === 'ChatsTab') {
+              IconComp = MessageSquare;
+            } else if (route.name === 'ContactsTab') {
+              IconComp = Users;
+            } else if (route.name === 'ExtractionsTab') {
+              IconComp = Zap;
+            } else if (route.name === 'SettingsTab') {
+              IconComp = SettingsIcon;
+            }
+
             return (
               <View style={[styles.iconBox, focused && styles.iconBoxFocused]}>
-                <Ionicons name={focused ? on : off} size={22} color={color} />
+                <IconComp size={iconSize} color={color} strokeWidth={strokeWidth} />
               </View>
             );
           },
@@ -307,9 +315,9 @@ const styles = StyleSheet.create({
   iconBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderRadius: 16,
+    width: 44,
+    height: 28,
+    borderRadius: 14,
   },
   iconBoxFocused: {
     backgroundColor: '#E8F5F2',
