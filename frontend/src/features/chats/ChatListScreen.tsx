@@ -258,7 +258,7 @@ export const ChatListScreen = ({ navigation }: any) => {
     const isChannel = item.chatType === 'CHANNEL' || item.externalChatId?.endsWith('@newsletter');
     const isSelf = item.chatType === 'SELF' || Boolean(item.isSelfChat);
     const storedTitle = typeof item.title === 'string' ? item.title.trim() : '';
-    const resolvedTitle = storedTitle || (isGroup || isChannel || isSelf ? resolveDisplayName(item.contact || item, item.title, isGroup) : 'Unknown');
+    const resolvedTitle = storedTitle || resolveDisplayName(item.contact || item, item.title, isGroup) || 'WhatsApp Chat';
     const title = isSelf && !resolvedTitle.includes('(You)') ? `${resolvedTitle} (You)` : resolvedTitle;
     const isTyping = Boolean(typingMap[item.id] || typingMap[item.externalChatId]);
     const photoUrl = item.avatarUrl || item.contact?.profilePhotoUrl;

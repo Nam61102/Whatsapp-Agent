@@ -961,7 +961,7 @@ export const DashboardScreen = ({ navigation }: any) => {
             {recentChats.map((chat, idx) => {
               const isGroup = chat.chatType === 'GROUP' || chat.isGroup || chat.whatsappChatJid?.includes('@g.us');
               const storedChatTitle = typeof chat.title === 'string' ? chat.title.trim() : '';
-              const resolvedChatTitle = storedChatTitle || (isGroup ? resolveDisplayName(chat.contact, chat.title, isGroup) : 'Unknown');
+              const resolvedChatTitle = storedChatTitle || resolveDisplayName(chat.contact, chat.title, isGroup) || 'WhatsApp Chat';
               const isLast = idx === recentChats.length - 1;
 
               return (

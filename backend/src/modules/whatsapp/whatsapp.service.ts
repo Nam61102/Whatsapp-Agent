@@ -1,3 +1,4 @@
+import { backupSessionToMongo, restoreAllSessionsFromMongo, clearSessionFromMongo } from './adapters/session-store';
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
@@ -44,7 +45,12 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       const s = await this.prisma.userSettings.findUnique({ where: { userId }, select: { retentionDays: true } });
       return (s?.retentionDays ?? 3) > 15;
     });
-    setTimeout(() => {
+    setTimeout(async () => {
+      try {
+        await restoreAllSessionsFromMongo(this.prisma);
+      } catch (e: any) {
+        this.logger.warn(`Session restore from MongoDB error: ${e.message}`);
+      }
       // Only sessions whose user exists in the connected database are restored. A session folder that
       // belongs to another database (for example the local one while using the cloud one) is skipped.
       const userExists = async (id: string) => {
@@ -164,7 +170,10 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
       await this.eventService.handleConnectionUpdate(userId, account.id, rest);
 
-      if (update.status === 'CONNECTED') this.scheduleLinkSync(userId, account.id);
+      if (update.status === 'CONNECTED') {
+        this.scheduleLinkSync(userId, account.id);
+        backupSessionToMongo(this.prisma, userId).catch(() => {});
+      }
     });
 
     this.baileysAdapter.on('message.received', async (payload) => {
@@ -663,6 +672,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     // 1. Close Baileys socket and clear session files for user
     await this.baileysAdapter.disconnect(userId);
     await this.baileysAdapter.clearSession(userId);
+    await clearSessionFromMongo(this.prisma, userId);
 
     // 2. Wipe all synced database data associated with this account
     //    (fire-and-forget; disconnect should never trigger an auto-resync)
