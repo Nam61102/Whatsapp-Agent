@@ -25,7 +25,7 @@ import { findChatMessagesForContact } from '../../shared/contact-resolver';
 import { accountCache } from '../../shared/ttl-cache';
 
 /** Bump when the profile format changes; older saved profiles are rebuilt. */
-const PROFILE_VERSION = 'v2-likes';
+const PROFILE_VERSION = 'v3-multilingual';
 
 @ApiTags('AI')
 @ApiBearerAuth('JWT-auth')

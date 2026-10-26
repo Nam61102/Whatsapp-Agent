@@ -888,7 +888,7 @@ export class WhatsAppEventService {
         this.eventsGateway.sendToUser(userId, 'whatsapp:stats', { messages: msgCount });
       }).catch(() => {});
 
-      if (!isFromMe && textContent && textContent.trim().length > 0 && !isNewsletter) {
+      if (textContent && textContent.trim().length > 0 && !isNewsletter) {
         const isNoise = /^(ok|okay|k|h[ie]y*|hello|thanks|thank you|thx|gm|gn|good morning|good night|👍|🙏|❤️|😊|haha|lol)$/i.test(
           textContent.trim()
         );
@@ -1594,6 +1594,7 @@ export class WhatsAppEventService {
 
     this.eventsGateway.sendToUser(userId, 'whatsapp:stats', statsPayload);
     this.eventsGateway.sendToUser(userId, 'dashboard:updated', { type: 'SYNC_COMPLETE', stats: statsPayload });
+    this.aiQueueService.processUnprocessedMessagesOnAIEnable(userId, { maxAgeHours: 72, maxMessages: 60 }).catch((err) => this.logger.warn(`[HISTORY_SYNC] Could not queue recent messages for AI: ${err.message}`));
     this.logger.log(`[HISTORY_SYNC] Completed sync for ${userId}: ${JSON.stringify(statsPayload)}`);
   }
 

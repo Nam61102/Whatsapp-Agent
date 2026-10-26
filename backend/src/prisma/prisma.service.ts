@@ -19,12 +19,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    */
   static buildUrl(url: string | undefined): string | undefined {
     if (!url) return url;
+    let u = url.trim();
+
+    // Auto-fix missing database name if connection string is missing database path
+    // e.g. mongodb+srv://user:pass@cluster.mongodb.net/ or mongodb+srv://user:pass@cluster.mongodb.net
+    const match = u.match(/^(mongodb(?:\+srv)?:\/\/[^\/?]+)(?:\/)?(\?.*)?$/);
+    if (match) {
+      const base = match[1];
+      const query = match[2] || '';
+      u = `${base}/whatsapp_agent${query}`;
+    }
+
     const add: string[] = [];
-    if (!/[?&]maxPoolSize=/i.test(url)) add.push(`maxPoolSize=${process.env.DB_MAX_POOL_SIZE || '8'}`);
-    if (!/[?&]minPoolSize=/i.test(url)) add.push('minPoolSize=0');
-    if (!/[?&]connectTimeoutMS=/i.test(url)) add.push('connectTimeoutMS=15000');
-    if (add.length === 0) return url;
-    return url + (url.includes('?') ? '&' : '?') + add.join('&');
+    if (!/[?&]maxPoolSize=/i.test(u)) add.push(`maxPoolSize=${process.env.DB_MAX_POOL_SIZE || '8'}`);
+    if (!/[?&]minPoolSize=/i.test(u)) add.push('minPoolSize=0');
+    if (!/[?&]connectTimeoutMS=/i.test(u)) add.push('connectTimeoutMS=15000');
+    if (add.length === 0) return u;
+    return u + (u.includes('?') ? '&' : '?') + add.join('&');
   }
 
   constructor() {

@@ -21,6 +21,7 @@ export const ContactProfileScreen = ({ route, navigation }: any) => {
   const [profileNote, setProfileNote] = useState<string | null>(null);
   const [contact, setContact] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isReanalyzing, setIsReanalyzing] = useState(false);
 
   const fetchContactAndProfile = useCallback(async () => {
     try {
@@ -49,6 +50,25 @@ export const ContactProfileScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     fetchContactAndProfile();
   }, [fetchContactAndProfile]);
+
+  const handleReanalyze = async () => {
+    setIsReanalyzing(true);
+    try {
+      const profileRes: any = await apiClient.get(`/ai/contacts/${contactId}/profile`);
+      if (profileRes?.status === 'NO_DATA') {
+        setProfile(null);
+        setProfileNote(profileRes.message);
+      } else {
+        setProfile(profileRes);
+        setProfileNote(null);
+      }
+    } catch (err: any) {
+      setProfile(null);
+      setProfileNote(err?.message || 'AI analysis could not be loaded. Please try again.');
+    } finally {
+      setIsReanalyzing(false);
+    }
+  };
 
   const handleOpenChat = () => {
     if (contact?.conversations?.[0]?.id) {

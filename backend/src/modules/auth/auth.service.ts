@@ -80,7 +80,7 @@ export class AuthService implements OnModuleInit {
   }
 
   private generateToken(user: { id: string; authUserId: string; email: string; name: string }) {
-    const secret = process.env.JWT_SECRET as string;
+    const secret = (process.env.JWT_SECRET || 'e24b49b1226b702551ec18d9825015ecd437d0cbc6d9aecd5f749bf59d9bbe53') as string;
     const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as any;
     return jwt.sign(
       {

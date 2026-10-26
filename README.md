@@ -72,16 +72,30 @@ VAI-4/
 ## How to Run the Project
 
 ### 1. Running the Backend
-From the root directory:
+The backend requires a MongoDB replica-set connection and a private JWT signing secret.
+Create the backend environment file before starting it:
 ```bash
 cd backend
 npm install
 npx prisma generate
+Copy-Item .env.example .env
+```
+Edit `backend/.env` and set `DATABASE_URL` to your MongoDB replica-set connection string. For the local setup, use:
+```env
+DATABASE_URL="mongodb://127.0.0.1:27018/vai4?replicaSet=rs0"
+```
+Generate a strong JWT secret in PowerShell with:
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+Put the generated value in `JWT_SECRET` in `backend/.env`. Do not commit or share this file. `OPENROUTER_API_KEY` is optional; AI extraction and reply suggestions remain disabled until it is configured.
+
+For local MongoDB on Windows, install MongoDB Server under `C:\Program Files\MongoDB\Server`. The startup helper detects an installed version, starts a dedicated replica set on port `27018`, and initializes it automatically:
+```powershell
 npx prisma db push
-npm run build
 npm start
 ```
-The backend will start on `http://localhost:3000`.
+For MongoDB Atlas or another remote replica set, configure its URL in `.env` instead; `start_db.js` only manages the local MongoDB instance. Run `npx prisma db push` after setting `DATABASE_URL`. `npm start` builds the backend before launching it on `http://localhost:3000`. If a healthy backend is already running on the configured port, startup reports that instead of trying to launch a duplicate.
 
 To run the automated 14-scenario end-to-end test suite:
 ```bash

@@ -46,6 +46,17 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
     }, 30 * 1000);
   }
 
+
+  async scanAllUsersUnprocessed(): Promise<void> {
+    const allSettings = await this.prisma.userSettings.findMany({
+      where: { autoAIAnalysis: true },
+      select: { userId: true },
+    });
+    for (const s of allSettings) {
+      await this.processUnprocessedMessagesOnAIEnable(s.userId, { maxAgeHours: 72, maxMessages: 100 }).catch(() => {});
+    }
+  }
+
   onModuleDestroy() {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
   }
@@ -281,7 +292,7 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
         textContent: { not: null },
       },
       orderBy: { messageTimestamp: 'desc' },
-      take: 600,
+      take: 5000,
     });
     const maxMessages = opts.maxMessages ?? 100;
 

@@ -946,7 +946,30 @@ export class BaileysAdapter implements IWhatsAppAdapter {
   }
 
   async sendMessage(userId: string, remoteJid: string, text: string): Promise<void> {
-    const sock = this.sockets.get(userId);
+    let sock = this.sockets.get(userId);
+    let state = this.connectionStates.get(userId);
+
+    if (!sock || state !== 'CONNECTED') {
+      const sessionDir = path.join(process.cwd(), 'sessions', userId);
+      const credsPath = path.join(sessionDir, 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        this.logger.log(`WhatsApp socket not active for user ${userId}. Attempting auto-reconnect before sending message...`);
+        try {
+          await this.connect(userId, 'QR', false);
+          const deadline = Date.now() + 12000;
+          while (Date.now() < deadline) {
+            sock = this.sockets.get(userId);
+            state = this.connectionStates.get(userId);
+            if (sock && (state === 'CONNECTED' || state === 'READY' || state === 'SYNCING')) break;
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+        } catch (reconnectErr: any) {
+          this.logger.warn(`Auto-reconnect before sendMessage failed: ${reconnectErr.message}`);
+        }
+      }
+    }
+
+    sock = this.sockets.get(userId);
     if (!sock) {
       throw new Error(`No active WhatsApp connection for user ${userId}. Please connect WhatsApp first.`);
     }

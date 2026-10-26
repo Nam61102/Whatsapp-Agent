@@ -10,6 +10,39 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason?.message || String(reason);
+  if (
+    msg.includes('Connection Closed') ||
+    msg.includes('Bad MAC') ||
+    msg.includes('Precondition Required') ||
+    reason?.isBoom ||
+    reason?.output?.statusCode === 428
+  ) {
+    new Logger('Process').warn(`Suppressed transient WhatsApp connection rejection: ${msg}`);
+    return;
+  }
+  new Logger('Process').error(`Unhandled rejection: ${msg}`, reason?.stack);
+});
+
+process.on('uncaughtException', (err: any) => {
+  const msg = err?.message || String(err);
+  if (
+    msg.includes('Connection Closed') ||
+    msg.includes('Bad MAC') ||
+    msg.includes('Precondition Required') ||
+    err?.isBoom ||
+    err?.output?.statusCode === 428
+  ) {
+    new Logger('Process').warn(`Suppressed transient WhatsApp connection error: ${msg}`);
+    return;
+  }
+  new Logger('Process').error(`Uncaught exception: ${msg}`, err?.stack);
+  if (err?.code === 'ECONNRESET' || err?.code === 'EPIPE' || err?.code === 'ETIMEDOUT') {
+    return;
+  }
+});
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   assertConfig(logger);
@@ -99,4 +132,7 @@ async function bootstrap() {
   logger.log(`Swagger OpenAPI Documentation available at /api/docs and /docs on port ${port}`);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  new Logger('Bootstrap').error(`Fatal error starting server: ${err.message}`, err.stack);
+  process.exit(1);
+});

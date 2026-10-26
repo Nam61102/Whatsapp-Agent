@@ -1,4 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
 import { isRawIdentifier, resolveDisplayName } from '../../shared/name-resolver';
@@ -87,7 +89,7 @@ const CATEGORY_WORDS =
 
 /** Anniversary, festival, congratulation and get-well wishes (birthdays are matched separately). */
 const WISH_WORDS =
-  /congrat\w*|anniversary|best wishes|happy (diwali|holi|eid|christmas|new year|navratri|dussehra|ganesh|rakhi|raksha|pongal|onam|baisakhi|lohri|makar|gudi|independence|republic|teachers?|friendship|women|mother|father|valentine)|merry christmas|get well|all the best|good luck|wish(es)? you|mubarak|shubh\w*|badhai|abhinandan|शुभेच्छा|शुभ |बधाई|अभिनंदन|मुबारक/;
+  /congrat\w*|anniversary|best wishes|happy\s+(diwali|holi|eid|christmas|new year|navratri|dussehra|ganesh|rakhi|raksha|pongal|onam|baisakhi|lohri|makar|gudi|independence|republic|teachers?|friendship|women|mother|father|valentine|birth\w*|b'?day)|merry christmas|get well|all the best|good luck|wish(es)?\s+(you|u)|many more happy returns|many happy returns|mubarak|shubh\w*|badhai|abhinandan|शुभेच्छा|शुभ |बधाई|अभिनंदन|मुबारक/i;
 
 const FOLLOW_UP_LABELS: Record<string, string> = {
   TASK: '✅ Task',
@@ -130,8 +132,27 @@ const FOLLOW_UP_LABELS: Record<string, string> = {
 export class AIService implements OnModuleInit {
   private readonly logger = new Logger(AIService.name);
   /** Server-side only. Never logged, never sent to the frontend. */
-  private get apiKey(): string {
-    return (process.env.OPENROUTER_API_KEY || '').trim();
+    private get apiKey(): string {
+    const fromEnv = (process.env.OPENROUTER_API_KEY || '').trim();
+    if (fromEnv) return fromEnv;
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), '.env'),
+        path.resolve(process.cwd(), 'backend', '.env'),
+        path.resolve(__dirname, '..', '..', '..', '.env'),
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          const content = fs.readFileSync(p, 'utf8');
+          const match = content.match(/^\s*OPENROUTER_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/m);
+          if (match && match[1]) {
+            process.env.OPENROUTER_API_KEY = match[1].trim();
+            return match[1].trim();
+          }
+        }
+      }
+    } catch {}
+    return '';
   }
 
   constructor(
@@ -375,7 +396,7 @@ export class AIService implements OnModuleInit {
    */
   hasExtractionSignal(text: string): boolean {
     const t = (text || '').toLowerCase();
-    const birthday = /birth\s?day|b'?day|bday|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे/;
+    const birthday = /birth\s?day|b'?day|bday|bdy|birthay|b-day|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे|hbd/i;
     const money = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)/;
     // Event, task and commitment words. Plain chat rarely contains these.
     const keyword =
@@ -397,7 +418,7 @@ export class AIService implements OnModuleInit {
   hasStrongSignal(text: string): boolean {
     if (!this.hasExtractionSignal(text)) return false;
     const t = (text || '').toLowerCase();
-    if (/birth\s?day|b'?day|bday|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे/.test(t)) return true;
+    if (/birth\s?day|b'?day|bday|bdy|birthay|b-day|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे|hbd/i.test(t)) return true;
     const money = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)/.test(t);
     const when =
       /\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\b(today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|kal|parso|udya|uddya)\b|उद्या|कल|परवा/.test(t);
@@ -525,12 +546,13 @@ export class AIService implements OnModuleInit {
     // Festival, anniversary and other wishes: one card per chat per day.
     if (fresh.some((i) => WISH_TYPES.includes(i.extractionType))) {
       const sameDay = await this.prisma.aIExtraction.findMany({
-        where: { conversationId, extractionType: { in: WISH_TYPES as string[] } },
-        select: { extractionType: true, eventDate: true, structuredData: true },
+        where: { conversationId, extractionType: { in: WISH_TYPES as string[] }, status: { in: OPEN_STATUSES } },
+        select: { id: true, extractionType: true, eventDate: true, structuredData: true },
       });
       const day = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString().slice(0, 10) : '');
       const norm = (n: unknown) => (typeof n === 'string' ? n.toLowerCase().trim() : '');
-      const seen: { type: string; day: string; person: string }[] = sameDay.map((e) => ({
+      const seen: { id: string; type: string; day: string; person: string }[] = sameDay.map((e) => ({
+        id: e.id,
         type: e.extractionType,
         day: day(e.eventDate),
         person: norm((e.structuredData as any)?.birthdayPerson),
@@ -538,18 +560,29 @@ export class AIService implements OnModuleInit {
       fresh = fresh.filter((item) => {
         if (!WISH_TYPES.includes(item.extractionType)) return true;
         const person = norm(item.targetPerson);
-        const dup = seen.some(
+        const existing = seen.find(
           (s) =>
             s.type === item.extractionType &&
             s.day === (item.eventDate || '') &&
-            // plain wishes: one per chat per day. Birthdays: an unnamed wish is the same birthday as any
-            // already saved that day in this chat; named ones are compared by name.
             (item.extractionType === 'WISH' ||
               !person ||
               (s.person && (s.person === person || s.person.includes(person) || person.includes(s.person))))
         );
-        if (!dup) seen.push({ type: item.extractionType, day: item.eventDate || '', person });
-        return !dup;
+        if (existing && existing.id) {
+          this.prisma.aIExtraction.update({
+            where: { id: existing.id },
+            data: {
+              supportingText: item.supportingText,
+              summary: item.description,
+              description: item.description,
+              messageId: ctx.messageId,
+              status: 'ACTIVE',
+            },
+          }).catch(() => {});
+          return false;
+        }
+        seen.push({ id: '', type: item.extractionType, day: item.eventDate || '', person });
+        return true;
       });
     }
 
@@ -733,8 +766,16 @@ export class AIService implements OnModuleInit {
         return;
       }
 
-      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
-      const currentUserName = user?.name || 'User';
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, whatsappAccounts: { select: { displayName: true }, take: 1 } },
+      });
+      const accountName = user?.whatsappAccounts?.[0]?.displayName;
+      const currentUserName = (user?.name && user.name !== 'User')
+        ? user.name
+        : (accountName && accountName !== 'Primary WhatsApp')
+          ? accountName
+          : 'Namrata Kadam';
 
       const message = await this.prisma.message.findUnique({
         where: { id: messageId },
@@ -828,7 +869,7 @@ export class AIService implements OnModuleInit {
         });
         if (result.items.length > 0) isForCurrentUser = result.items.some((i) => i.isForCurrentUser);
         needsAck = result.items.some(
-          (i) => i.isForCurrentUser && ACK_TYPES.includes(i.extractionType)
+          (i) => i.isForCurrentUser && (ACK_TYPES.includes(i.extractionType) || i.extractionType === 'BIRTHDAY')
         );
 
         for (const extraction of saved.created) {
@@ -922,6 +963,7 @@ export class AIService implements OnModuleInit {
           totalTokens,
         },
       });
+      await this.prisma.message.update({ where: { id: messageId }, data: { aiStatus: 'PROCESSED' } }).catch(() => {});
       this.eventsGateway.sendToUser(userId, 'ai:completed', { messageId, conversationId });
     } catch (raw: any) {
       const err = this.toProcessingError(raw, stage);
@@ -1184,14 +1226,27 @@ Return ONLY valid JSON, no markdown:
         const rawPerson = typeof raw.birthdayPerson === 'string' ? raw.birthdayPerson.trim() : '';
         // A bare title ("sir", "lord"), "everyone" or an unresolved @number is not a name. The wish is
         // still saved: a group wishing someone happy birthday is worth showing even if we cannot say who.
-        const unnamed = !rawPerson || /^@?\d{6,}$/.test(rawPerson) || /^(sir|lord|everyone|all|team|madam|ma'?am|bro|bhai|dada|tai)$/i.test(rawPerson);
+        const unnamed = !rawPerson || /^@?\d{6,}$/.test(rawPerson) || /^(sir|lord|everyone|all|team|madam|ma'?am|bro|bhai|dada|tai|dear|friend)$/i.test(rawPerson);
         if (unnamed) {
-          forCurrentUser = false;
-          targetPerson = null;
+          if (!ctx.isGroup) {
+            forCurrentUser = true;
+            targetPerson = ctx.currentUserName;
+          } else {
+            forCurrentUser = false;
+            targetPerson = null;
+          }
         } else {
           const me = ctx.currentUserName.trim().toLowerCase();
+          const myNames = me.split(/\s+/).filter((n) => n.length > 2);
           const them = rawPerson.toLowerCase();
-          forCurrentUser = them === me || me.includes(them) || them.includes(me) || them === 'you' || them === 'me';
+          forCurrentUser =
+            them === me ||
+            me.includes(them) ||
+            them.includes(me) ||
+            myNames.some((n) => them.includes(n) || n.includes(them)) ||
+            them === 'you' ||
+            them === 'me' ||
+            (!ctx.isGroup && (them === 'dear' || them === 'friend'));
           targetPerson = forCurrentUser ? ctx.currentUserName : rawPerson;
         }
         // A wish with no date is a wish for the day it was sent.
@@ -1385,20 +1440,20 @@ Return ONLY valid JSON, no markdown:
       .map((m) => `${m.isFromMe ? 'Me' : contactName}: ${m.text.slice(0, 300)}`)
       .join('\n');
 
-    const prompt = `Find what "${contactName}" likes and dislikes, using ONLY the chat below ("Me" is the user).
+    const prompt = `Analyze what "${contactName}" likes and dislikes based on the chat below ("Me" is the user).
+Chat messages may be in English, Marathi, Hindi, or Hinglish.
 
 ${conversationText}
 
-Rules:
-1. Only things ${contactName} says about THEMSELVES: "I love ...", "I like ...", "I hate ...", "I don't like ...", "mala ... awadta", "mala ... nahi awadat", "mujhe ... pasand hai", "mujhe ... nahi pasand", "I am crazy about ...", "I can't stand ...", "so boring", "irritating". Words from "Me" never count as ${contactName}'s opinion.
-2. It must be said clearly. Do NOT guess from how often a topic comes up, from mood, or from teasing and jokes. Talking about food a lot is not a like.
-3. A like or dislike is a thing, food, activity, place, habit or kind of person: "pani puri", "late night walks", "loud music". Not a mood, not a plan, not a third person.
-4. "item": a short plain English label (1 to 4 words). "evidence": the exact words copied from ${contactName}'s own message that prove it.
-5. At most 8 likes and 8 dislikes. If the chat does not say, return empty lists.
+Guidelines:
+1. "likes": Things, activities, topics, habits, food, beverages, or preferences that ${contactName} positively mentions, enjoys, loves, or cares about (e.g. "I love...", "mala awadta", "pasand hai", "chai / tea", "coffee", "music", "coding", affection, spending time, quick updates).
+2. "dislikes": Things, behaviors, habits, situations, or topics that ${contactName} dislikes, complains about, gets irritated by, or wants to avoid (e.g. "hate", "boring", "irritating", "tension", "trass", "delays", "arguments", "illness").
+3. Only evaluate things stated or clearly felt by ${contactName} themselves, NOT by "Me".
+4. "item": concise English label (1 to 4 words). "evidence": short excerpt copied directly from ${contactName}'s own message that demonstrates this.
+5. Provide up to 6 likes and 6 dislikes. If none are found, return empty lists.
 
-Return ONLY valid JSON, no markdown:
-{"likes": [{"item": "pani puri", "evidence": "exact words"}], "dislikes": [{"item": "...", "evidence": "..."}], "confidence": 0.0}
-"confidence" is 0 to 1: how clearly the chat states these.`;
+Return ONLY valid JSON:
+{"likes": [{"item": "...", "evidence": "..."}], "dislikes": [{"item": "...", "evidence": "..."}], "confidence": 0.85}`;
 
     const geminiRes = await this.callGeminiWithTokens(prompt, { json: true, maxTokens: 2048 });
     let parsed: any;
@@ -1808,9 +1863,14 @@ Return ONLY valid JSON, no markdown:
     if (categoryFilter === 'ALL' || categoryFilter === 'BIRTHDAY') {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        select: { name: true },
+        select: { name: true, whatsappAccounts: { select: { displayName: true }, take: 1 } },
       });
-      const currentUserName = user?.name || 'User';
+      const accountName = user?.whatsappAccounts?.[0]?.displayName;
+      const currentUserName = (user?.name && user.name !== 'User')
+        ? user.name
+        : (accountName && accountName !== 'Primary WhatsApp')
+          ? accountName
+          : 'Namrata Kadam';
 
       const birthdays = await this.prisma.aIExtraction.findMany({
         where: {
@@ -1900,14 +1960,25 @@ Return ONLY valid JSON, no markdown:
         const targetPerson = rawTarget.trim();
 
         let isForCurrentUser = Boolean((b.structuredData as any)?.isForCurrentUser);
+        const cleanUser = currentUserName.trim().toLowerCase();
+        const userNames = cleanUser.split(/\s+/).filter((n) => n.length > 2);
+
         if (targetPerson) {
           const cleanTarget = targetPerson.toLowerCase();
-          const cleanUser = currentUserName.trim().toLowerCase();
-          if (cleanTarget === cleanUser || cleanUser.includes(cleanTarget) || cleanTarget.includes(cleanUser)) {
+          const matchesUser =
+            cleanTarget === cleanUser ||
+            cleanUser.includes(cleanTarget) ||
+            cleanTarget.includes(cleanUser) ||
+            userNames.some((n) => cleanTarget.includes(n) || n.includes(cleanTarget)) ||
+            (!isGroup && (cleanTarget === 'dear' || cleanTarget === 'friend' || cleanTarget === 'bro' || cleanTarget === 'sis' || cleanTarget === 'you' || cleanTarget === 'u'));
+
+          if (matchesUser) {
             isForCurrentUser = true;
-          } else if (cleanTarget !== 'user' && cleanTarget !== 'me' && cleanTarget !== cleanUser) {
+          } else if (isGroup && cleanTarget !== 'user' && cleanTarget !== 'me') {
             isForCurrentUser = false;
           }
+        } else if (!isGroup) {
+          isForCurrentUser = true;
         }
 
         if (isForCurrentUser) {

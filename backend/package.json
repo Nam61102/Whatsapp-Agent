@@ -5,7 +5,6 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "prestart": "node start_db.js",
     "start": "node --max-old-space-size=380 -r dotenv/config dist/main.js",
     "prestart:dev": "node start_db.js",
     "start:dev": "ts-node -r dotenv/config src/main.ts",
