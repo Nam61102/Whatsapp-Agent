@@ -61,7 +61,6 @@ export class ChatsService {
       userId,
       whatsappAccountId: account.id,
       NOT: [{ externalChatId: 'status@broadcast' }],
-      lastMessageAt: { not: null },
     };
 
     if (search) {
@@ -103,7 +102,7 @@ export class ChatsService {
           },
         },
       },
-      orderBy: { lastMessageAt: 'desc' },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
       take: limit,
       skip: offset,
     });
@@ -118,13 +117,16 @@ export class ChatsService {
     ]);
     const withLatest = conversations.map((c) => {
       const m = latestByChat.get(c.id);
-      if (!m) return c;
       const isGroup = c.chatType === 'GROUP' || c.externalChatId?.endsWith('@g.us');
-      const body = m.text && m.text.trim() ? m.text : '[Message]';
+      const body = m ? (m.text && m.text.trim() ? m.text : '[Message]') : (c.lastMessageText || 'No messages yet');
+      
+      const resolvedTitle = c.title || c.contact?.displayName || c.contact?.pushName || (c.contact?.phoneNumber ? `+${c.contact.phoneNumber}` : null) || (isGroup ? 'Group Chat' : 'WhatsApp Contact');
+      
       return {
         ...c,
-        lastMessageText: isGroup && !m.isFromMe && m.sender ? `${m.sender}: ${body}` : body,
-        lastMessageAt: m.at,
+        title: resolvedTitle,
+        lastMessageText: isGroup && m && !m.isFromMe && m.sender ? `${m.sender}: ${body}` : body,
+        lastMessageAt: m?.at || c.lastMessageAt || c.updatedAt,
       };
     });
 

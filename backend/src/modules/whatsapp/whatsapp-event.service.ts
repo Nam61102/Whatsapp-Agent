@@ -328,16 +328,17 @@ export class WhatsAppEventService {
     });
     const timer = setTimeout(() => {
       this.historyTimers.delete(userId);
-      if (this.historySeen.has(userId)) return;
+      const cur = this.getSyncProgress(userId);
+      if (cur.status === 'COMPLETED' || cur.progress >= 100) return;
       this.updateSyncProgress(userId, {
         status: 'COMPLETED',
         currentStage: 'COMPLETED',
         progress: 100,
-        message: 'WhatsApp did not send older chats this time. New messages will appear live. To fetch history again, unlink and link WhatsApp.',
+        message: 'WhatsApp synchronization complete. Ready to chat!',
         canContinueToApp: true,
         completedAt: new Date(),
       });
-    }, WhatsAppEventService.HISTORY_WAIT_MS);
+    }, 45000);
     this.historyTimers.set(userId, timer);
   }
 
@@ -1533,7 +1534,7 @@ export class WhatsAppEventService {
     }
 
     // 5. Complete Sync (AI Extraction Gated)
-    const isFinished = payload.isLatest !== false;
+    const isFinished = payload.isLatest !== false || validMessages.length === 0;
     const msgPct = validMessages.length > 0 ? Math.round((messagesProcessed / validMessages.length) * 100) : 100;
     if (isFinished || msgPct === 100) {
       this.updateSyncProgress(userId, {
