@@ -1,14 +1,14 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Logger } from '@nestjs/common';
+import { PrismaService } from './prisma/prisma.service';
 
 const startedAt = Date.now();
 
-/**
- * Answers instantly without touching the database. Point a free uptime monitor at it so the host never falls asleep.
- * It also reports uptime and memory: an uptime that keeps resetting means the server is being restarted, and a
- * memory figure near the plan limit explains why.
- */
 @Controller('health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
   @Get()
   ping() {
     const m = process.memoryUsage();
@@ -19,5 +19,33 @@ export class HealthController {
       uptimeSec: Math.round((Date.now() - startedAt) / 1000),
       memoryMB: { rss: mb(m.rss), heapUsed: mb(m.heapUsed), heapTotal: mb(m.heapTotal), external: mb(m.external) },
     };
+  }
+
+  @Get('debug-db')
+  async debugDb() {
+    const rawUrl = process.env.DATABASE_URL || '';
+    const safeUrl = rawUrl.replace(/:([^:@]+)@/, ':***@');
+    try {
+      const start = Date.now();
+      await this.prisma.$connect();
+      const userCount = await this.prisma.user.count();
+      return {
+        ok: true,
+        databaseConnected: true,
+        durationMs: Date.now() - start,
+        userCount,
+        databaseUrl: safeUrl,
+      };
+    } catch (err: any) {
+      this.logger.error(`[debug-db] Connection error: ${err.message}`, err.stack);
+      return {
+        ok: false,
+        databaseConnected: false,
+        errorName: err.name,
+        errorMessage: err.message,
+        errorCode: err.code,
+        databaseUrl: safeUrl,
+      };
+    }
   }
 }
