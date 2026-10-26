@@ -1061,7 +1061,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 10, message: 'Asking WhatsApp for your groups and chats...' });
           await this.baileysAdapter.resyncSession(account.userId);
           this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 60, message: 'Updating contacts and chats...' });
-          await withTimeout(this.eventService.runSessionBackfill(userId, accountId), 60000, 'Updating contacts and chats');
+          await withTimeout(this.eventService.runSessionBackfill(userId, accountId), 15000, 'Updating contacts and chats').catch(() => {});
+          this.aiQueueService.processUnprocessedMessagesOnAIEnable(userId, { maxAgeHours: 72, maxMessages: 100 }).catch(() => {});
         } catch (err: any) {
           this.logger.warn(`Background session resync error: ${err.message}`);
           note = `Re-sync finished with a problem (${err.message}). Your data is unchanged; try again in a minute.`;

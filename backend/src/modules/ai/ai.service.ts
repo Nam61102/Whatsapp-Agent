@@ -85,7 +85,7 @@ const PROMO_PATTERNS: RegExp[] = [
  * chat words ("need", "plan", "update") are left out so ordinary conversation is not sent to the AI.
  */
 const CATEGORY_WORDS =
-  /\b(invoice|bill|receipt|orders?|ordered|deliver(y|ed)|shipment|shipped|tracking|dispatched|refund|pdf|attached|attachment|complaint|defect|broken|not working|urgent|asap|escalat\w*|immediately|requirements?|enquiry|inquiry|quotation|quote|negotiat\w*|proposal|milestone|project update|status update|progress report|approve[ds]?|approval|reject(ed)?|renew\w*|expir\w*|validity|every (day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|daily|weekly|monthly|goal|resched\w*|postpone\w*|cancel\w*|prefer\w*|instructions?|please note|don'?t forget|pending|awaiting|decided|agreed|will do)\b/;
+  /\b(invoice|bill|receipt|orders?|ordered|deliver(y|ed)|shipment|shipped|tracking|dispatched|refund|pdf|attached|attachment|complaint|defect|broken|not working|urgent|asap|escalat\w*|immediately|requirements?|enquiry|inquiry|quotation|quote|negotiat\w*|proposal|milestone|project update|status update|progress report|approve[ds]?|approval|reject(ed)?|renew\w*|expir\w*|validity|every (day|week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|daily|weekly|monthly|goal|resched\w*|postpone\w*|cancel\w*|prefer\w*|instructions?|please note|don'?t forget|pending|awaiting|decided|agreed|will do|sheets?|spreadsheets?|docs?|forms?|excel|drive|remarks?|columns?|students?|parents?|teachers?|faculty|prof\w*|ceremony|functions?|passing[- ]?out|farewell|convocation|ping|reach out|connect|tasks?|todo|to-do|takle|pathavle|dile|ghetle|bheja|diya|bhara|paise|rupaye)\b/;
 
 /** Anniversary, festival, congratulation and get-well wishes (birthdays are matched separately). */
 const WISH_WORDS =
@@ -397,10 +397,10 @@ export class AIService implements OnModuleInit {
   hasExtractionSignal(text: string): boolean {
     const t = (text || '').toLowerCase();
     const birthday = /birth\s?day|b'?day|bday|bdy|birthay|b-day|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे|hbd/i;
-    const money = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)/;
+    const money = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)|\b(takle|pathavle|dile|ghetle|bheja|diya|bhara|paise|rupaye)\b/;
     // Event, task and commitment words. Plain chat rarely contains these.
     const keyword =
-      /\b(meeting|meet|appointment|interview|exam|deadline|due|submit|submission|booking|booked|ticket|flight|train|bus|hotel|check[- ]?in|pay|payment|fees?|invoice|emi|wedding|lagna|engagement|ceremony|function|seminar|viva|result|remind|reminder|follow ?up|send|share|bhej|bhejo|bhejna|bhejta|dunga|denge|karunga|karenge|karto|karen|review|confirm|quotation|quote|order|requirement|proposal|reschedule|postpone|cancel|cancelled|completed|sent|done|phone|number|email|address|venue)\b/;
+      /\b(meeting|meet|appointment|interview|exam|deadline|due|submit|submission|booking|booked|ticket|flight|train|bus|hotel|check[- ]?in|pay|payment|fees?|invoice|emi|wedding|lagna|engagement|ceremony|function|seminar|viva|result|remind|reminder|follow ?up|send|share|bhej|bhejo|bhejna|bhejta|dunga|denge|karunga|karenge|karto|karen|review|confirm|quotation|quote|order|requirement|proposal|reschedule|postpone|cancel|cancelled|completed|sent|done|phone|numbers?|email|address|venue|sheets?|spreadsheets?|excel|drive|docs?|forms?|remarks?|columns?|students?|parents?|ping|assign\w*|allocated?|colab|github|repo)\b/;
     if (birthday.test(t)) return true;
     // Ads and broadcasts are never personal items, even when they mention dates and prices.
     if (this.looksPromotional(text)) return false;
@@ -424,7 +424,7 @@ export class AIService implements OnModuleInit {
       /\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\b(today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|kal|parso|udya|uddya)\b|उद्या|कल|परवा/.test(t);
     const indianTime = /\b\d{1,2}([:.]\d{2})?\s?(baje|bajta|vajta|vaje)\b|\b\d{1,2}\s?(tarikh|taarikh|tareekh|tarkhela)\b/.test(t);
     // Also strong on their own: wishes, and the clearest business signals.
-    const strongWords = /\b(invoice|urgent|asap|complaint|renew\w*|expir\w*|approved|rejected|escalat\w*)\b/.test(t);
+    const strongWords = /\b(invoice|urgent|asap|complaint|renew\w*|expir\w*|approved|rejected|escalat\w*|sheets?|spreadsheets?|docs?|forms?|remarks?|ceremony|passing[- ]?out|assignment|submission|ping)\b/.test(t);
     return money || when || indianTime || WISH_WORDS.test(t) || strongWords;
   }
 
@@ -1449,7 +1449,7 @@ Guidelines:
 1. "likes": Things, activities, topics, habits, food, beverages, or preferences that ${contactName} positively mentions, enjoys, loves, or cares about (e.g. "I love...", "mala awadta", "pasand hai", "chai / tea", "coffee", "music", "coding", affection, spending time, quick updates).
 2. "dislikes": Things, behaviors, habits, situations, or topics that ${contactName} dislikes, complains about, gets irritated by, or wants to avoid (e.g. "hate", "boring", "irritating", "tension", "trass", "delays", "arguments", "illness").
 3. Only evaluate things stated or clearly felt by ${contactName} themselves, NOT by "Me".
-4. "item": concise English label (1 to 4 words). "evidence": short excerpt copied directly from ${contactName}'s own message that demonstrates this.
+4. "item": concise, natural, professional English label (1 to 4 words, e.g. "Checking on meals", "Healthy eating habits", "Affectionate messages", "Quick responses"). NEVER write awkward phrases like "Knowing what Me ate" or "Me eating properly" — write natural phrases like "Partner's well-being" or "Eating meals on time". "evidence": short excerpt copied directly from ${contactName}'s own message that demonstrates this.
 5. Provide up to 6 likes and 6 dislikes. If none are found, return empty lists.
 
 Return ONLY valid JSON:

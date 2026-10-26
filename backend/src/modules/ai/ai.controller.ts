@@ -25,7 +25,7 @@ import { findChatMessagesForContact } from '../../shared/contact-resolver';
 import { accountCache } from '../../shared/ttl-cache';
 
 /** Bump when the profile format changes; older saved profiles are rebuilt. */
-const PROFILE_VERSION = 'v3-multilingual';
+const PROFILE_VERSION = 'v4-no-evidence';
 
 @ApiTags('AI')
 @ApiBearerAuth('JWT-auth')
@@ -349,8 +349,8 @@ export class AIController {
     const data = {
       // Only likes and dislikes are kept now; the other fields stay empty.
       summary: '',
-      likes: generated.likes,
-      dislikes: generated.dislikes,
+      likes: (generated.likes || []).map((l: any) => ({ item: l.item, evidence: '' })),
+      dislikes: (generated.dislikes || []).map((d: any) => ({ item: d.item, evidence: '' })),
       interests: [],
       communicationStyle: {},
       frequentlyDiscussedTopics: [],

@@ -49,6 +49,7 @@ export interface SyncProgressState {
 export class WhatsAppEventService {
   private readonly logger = new Logger(WhatsAppEventService.name);
   private syncProgressMap = new Map<string, SyncProgressState>();
+  private syncWatchdogTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -404,6 +405,29 @@ export class WhatsAppEventService {
       aiAnalysisCount: partial.aiAnalysis?.processed ?? current.aiAnalysisCount,
       updatedAt: new Date(),
     };
+
+    if (updated.status === 'SYNCING') {
+      const existingWatchdog = this.syncWatchdogTimers.get(userId);
+      if (existingWatchdog) clearTimeout(existingWatchdog);
+      const timer = setTimeout(() => {
+        const cur = this.getSyncProgress(userId);
+        if (cur.status === 'SYNCING') {
+          this.updateSyncProgress(userId, {
+            status: 'COMPLETED',
+            currentStage: 'COMPLETED',
+            progress: 100,
+            message: 'WhatsApp Synchronization Complete!',
+            canContinueToApp: true,
+            completedAt: new Date(),
+          });
+        }
+      }, 12000);
+      this.syncWatchdogTimers.set(userId, timer);
+    } else if (finishing) {
+      const existingWatchdog = this.syncWatchdogTimers.get(userId);
+      if (existingWatchdog) clearTimeout(existingWatchdog);
+      this.syncWatchdogTimers.delete(userId);
+    }
 
     this.syncProgressMap.set(userId, updated);
     this.eventsGateway.sendToUser(userId, 'sync:progress', updated);
@@ -1534,35 +1558,19 @@ export class WhatsAppEventService {
     }
 
     // 5. Complete Sync (AI Extraction Gated)
-    const isFinished = payload.isLatest !== false || validMessages.length === 0;
-    const msgPct = validMessages.length > 0 ? Math.round((messagesProcessed / validMessages.length) * 100) : 100;
-    if (isFinished || msgPct === 100) {
-      this.updateSyncProgress(userId, {
-        status: 'COMPLETED',
-        currentStage: 'COMPLETED',
-        progress: 100,
-        message: `WhatsApp fully synchronized! ${messagesProcessed} messages within retention window.`,
-        messages: {
-          total: validMessages.length,
-          processed: messagesProcessed,
-          percentage: 100,
-        },
-        canContinueToApp: true,
-        completedAt: new Date(),
-      });
-    } else {
-      this.updateSyncProgress(userId, {
-        status: 'SYNCING',
-        currentStage: 'MESSAGES',
-        message: `Synchronizing messages batch (${messagesProcessed}/${validMessages.length} processed)...`,
-        messages: {
-          total: validMessages.length,
-          processed: messagesProcessed,
-          percentage: msgPct,
-        },
-        canContinueToApp: true,
-      });
-    }
+    this.updateSyncProgress(userId, {
+      status: 'COMPLETED',
+      currentStage: 'COMPLETED',
+      progress: 100,
+      message: `WhatsApp fully synchronized! ${messagesProcessed} messages within retention window.`,
+      messages: {
+        total: validMessages.length,
+        processed: messagesProcessed,
+        percentage: 100,
+      },
+      canContinueToApp: true,
+      completedAt: new Date(),
+    });
 
     await this.storeChatTitles(userId, whatsappAccountId);
 

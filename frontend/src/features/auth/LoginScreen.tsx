@@ -20,8 +20,8 @@ import { Sticker } from '../../shared/components/Sticker';
 import { IconText } from '../../shared/components/IconText';
 
 export const LoginScreen = ({ navigation }: any) => {
-  const [email, setEmail] = useState('demo@user.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +51,11 @@ export const LoginScreen = ({ navigation }: any) => {
         navigation.reset({ index: 0, routes: [{ name: 'WhatsAppConnect' }] });
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check credentials.');
+      if (err.statusCode === 401) {
+        setError("Email or password is incorrect. If you don't have an account yet, create one below.");
+      } else {
+        setError(err.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -91,6 +95,7 @@ export const LoginScreen = ({ navigation }: any) => {
 
         <View style={styles.card}>
           <Text style={styles.formTitle}>Sign In to Your Workspace</Text>
+          <Text style={styles.subtitle}>Use your registered email and password.</Text>
 
           {error && (
             <View style={styles.errorBox}>

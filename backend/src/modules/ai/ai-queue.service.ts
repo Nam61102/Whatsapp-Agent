@@ -270,7 +270,7 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
    */
   async processUnprocessedMessagesOnAIEnable(
     userId: string,
-    opts: { maxAgeHours?: number; maxMessages?: number } = {}
+    opts: { maxAgeHours?: number; maxMessages?: number; forceRescan?: boolean } = {}
   ): Promise<void> {
     const settings = await this.getUserSettings(userId);
     if (!settings || !settings.autoAIAnalysis) return;
@@ -288,7 +288,9 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
         userId: realUserId,
         messageTimestamp: { gte: cutoffDate },
         syncStatus: 'PROCESSED',
-        aiStatus: { not: 'PROCESSED' },
+        ...(opts.forceRescan
+          ? { aiExtractions: { none: {} } }
+          : { OR: [{ aiStatus: { not: 'PROCESSED' } }, { aiExtractions: { none: {} } }] }),
         textContent: { not: null },
       },
       orderBy: { messageTimestamp: 'desc' },
@@ -306,6 +308,10 @@ export class AIQueueService implements OnModuleInit, OnModuleDestroy {
         !this.aiService.looksPromotional(msg.textContent) &&
         this.aiService.hasStrongSignal(msg.textContent)
       ) {
+        if (opts.forceRescan) {
+          const idempotencyKey = `${msg.whatsappAccountId}:${msg.id}:MESSAGE_ANALYSIS`;
+          await this.prisma.aIProcessingJob.deleteMany({ where: { idempotencyKey } });
+        }
         await this.enqueueMessageJob({
           messageId: msg.id,
           conversationId: msg.conversationId,

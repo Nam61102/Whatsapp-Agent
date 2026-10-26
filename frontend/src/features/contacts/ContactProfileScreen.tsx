@@ -134,7 +134,6 @@ export const ContactProfileScreen = ({ route, navigation }: any) => {
               <Ionicons name="checkmark-circle" size={18} color={Colors.success} style={{ marginTop: 1 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.likeItem}>{row.item}</Text>
-                {row.evidence ? <Text style={styles.likeEvidence}>“{row.evidence}”</Text> : null}
               </View>
             </View>
           ))
@@ -157,7 +156,6 @@ export const ContactProfileScreen = ({ route, navigation }: any) => {
               <Ionicons name="close-circle" size={18} color={Colors.danger} style={{ marginTop: 1 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.likeItem}>{row.item}</Text>
-                {row.evidence ? <Text style={styles.likeEvidence}>“{row.evidence}”</Text> : null}
               </View>
             </View>
           ))

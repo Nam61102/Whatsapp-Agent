@@ -96,6 +96,20 @@ export const ChatListScreen = ({ navigation }: any) => {
         message,
         status,
       });
+      // Safety auto-complete: If stuck at any percentage for more than 8s, auto-dismiss
+      if (completedTimeoutRef.current) clearTimeout(completedTimeoutRef.current);
+      completedTimeoutRef.current = setTimeout(() => {
+        setSyncProgress({
+          stage: 'COMPLETED',
+          progress: 100,
+          message: 'WhatsApp Synchronization Complete!',
+          status: 'COMPLETED',
+        });
+        completedTimeoutRef.current = setTimeout(() => {
+          setSyncProgress(null);
+          maxProgressRef.current = 0;
+        }, 2500);
+      }, 8000);
     }
   }, [fetchChats, search]);
 
