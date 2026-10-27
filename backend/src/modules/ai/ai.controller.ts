@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AIService } from './ai.service';
 import { AIQueueService } from './ai-queue.service';
+import { MorningBriefingService } from './morning-briefing.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { findChatMessagesForContact } from '../../shared/contact-resolver';
@@ -35,6 +36,7 @@ export class AIController {
   constructor(
     private readonly aiService: AIService,
     private readonly aiQueueService: AIQueueService,
+    private readonly morningBriefingService: MorningBriefingService,
     private readonly prisma: PrismaService
   ) {}
 
@@ -368,5 +370,15 @@ export class AIController {
     return this.prisma.contactAIProfile.create({
       data: { userId: req.user.id, whatsappAccountId: account.id, contactId: contact.id, ...data },
     });
+  }
+
+  @Get('morning-briefing')
+  @ApiOperation({
+    summary: 'Get daily AI morning briefing digest',
+    description: 'Retrieves warm morning summary, task/event counts, financial transfers, and priority action items.',
+  })
+  async getMorningBriefing(@Req() req: any, @Query('refresh') refresh?: string) {
+    const forceRefresh = refresh === 'true' || refresh === '1';
+    return this.morningBriefingService.getMorningBriefing(req.user.id, forceRefresh);
   }
 }

@@ -27,6 +27,8 @@ import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
 import { formatDueDate } from '../../shared/utils/dates';
 import { BadgeLabel } from '../../shared/components/BadgeLabel';
+import { MorningBriefingCard } from './components/MorningBriefingCard';
+import { openGoogleCalendar } from '../../shared/utils/calendarSync';
 
 const formatCountdown = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -614,10 +616,15 @@ export const DashboardScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <IconText icon="flash" style={styles.sectionTitle}>AI Action Center</IconText>
+        <>
+          <MorningBriefingCard
+            onNavigateToActionCenter={() => navigation.navigate('ExtractionsTab')}
+            refreshTrigger={refreshing ? 1 : 0}
+          />
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <IconText icon="flash" style={styles.sectionTitle}>AI Action Center</IconText>
               <Text style={styles.sectionSub}>High-value items requiring your action</Text>
             </View>
             <TouchableOpacity onPress={() => navigation.navigate('ExtractionsTab')}>
@@ -928,12 +935,28 @@ export const DashboardScreen = ({ navigation }: any) => {
                         <IconText center icon="gift" style={styles.btnPrimaryText}>Reply & Wish Back</IconText>
                       </TouchableOpacity>
                     )}
+
+                    {(item.category === 'MEETING' || item.category === 'APPOINTMENT' || item.category === 'EVENT' || item.eventDate) && (
+                      <TouchableOpacity
+                        style={[styles.btnCalendar, { flex: 1 }]}
+                        onPress={() =>
+                          openGoogleCalendar({
+                            title: item.title,
+                            description: item.summary || item.sourceMessageText,
+                            startDate: item.eventDate,
+                          })
+                        }
+                      >
+                        <IconText center icon="calendar" style={styles.btnCalendarText}>Add to Calendar</IconText>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </View>
               );
             })
           )}
         </View>
+        </>
       )}
 
       {/* Recent Conversations */}
@@ -1617,6 +1640,24 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   btnPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  btnCalendar: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#0284C7',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  btnCalendarText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
