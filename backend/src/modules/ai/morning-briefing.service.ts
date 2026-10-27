@@ -160,10 +160,10 @@ export class MorningBriefingService {
           contact: { select: { displayName: true } },
         },
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
-        take: 25,
+        take: 30,
       });
 
-      // 3. Compute metrics & detect events accurately
+      // 3. Compute metrics & strictly classify real events vs work/dev tasks
       let pendingTasks = 0;
       let events = 0;
       let recentTransfers = 0;
@@ -173,19 +173,30 @@ export class MorningBriefingService {
       for (const item of activeExtractions) {
         const type = (item.extractionType || '').toUpperCase();
         const text = `${item.title} ${item.description || ''} ${item.summary || ''}`.toLowerCase();
+
+        // Technical tasks, APK releases, optimization goals, sheets are NEVER events
+        const isTechOrWorkTask = /\b(apk|optimization|analytics|engine|scanner|radar|intelligence|integration|database|frontend|backend|sheet|spreadsheet)\b/i.test(text);
+        const isExplicitNonEvent = ['QUESTION', 'DOCUMENT', 'PAYMENT', 'INVOICE'].includes(type) || isTechOrWorkTask;
+
+        // True calendar events: ceremonies, convocations, parties, meetings, gatherings, celebrations
+        const hasEventKeyword = /\b(ceremony|convocation|passing[- ]out|party|gathering|celebration|wedding|reception|farewell|fest|festival|function|meetup|conference|webinar|seminar|annual day|get[- ]together)\b/i.test(text);
+
         const isEvent =
-          type === 'EVENT' ||
-          type === 'MEETING' ||
-          type === 'APPOINTMENT' ||
-          type === 'CEREMONY' ||
-          item.eventDate !== null ||
-          /ceremony|convocation|passing-out|party|gathering|event|function|meeting|webinar|session|fest/i.test(text);
+          !isExplicitNonEvent &&
+          ((type === 'EVENT' || type === 'MEETING' || type === 'APPOINTMENT' || type === 'CEREMONY') || hasEventKeyword);
 
         if (isEvent) {
           events++;
-        } else if (type === 'PAYMENT' || type === 'INVOICE' || /transfer|rs|₹|payment|paid/i.test(text)) {
-          const amtMatch = text.match(/(?:rs\.?|₹)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || text.match(/(\d+)\s*(?:rs|inr)/i);
-          const amt = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 350;
+        } else if (type === 'PAYMENT' || type === 'INVOICE') {
+          // Strictly count real payment/invoice amounts
+          let amt = 0;
+          const sdAmounts = (item.structuredData as any)?.amounts || (item.structuredData as any)?.entities?.amounts;
+          if (Array.isArray(sdAmounts) && sdAmounts.length > 0 && typeof sdAmounts[0].amount === 'number') {
+            amt = sdAmounts[0].amount;
+          } else {
+            const amtMatch = text.match(/(?:rs\.?|₹|inr)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || text.match(/(\d+)\s*(?:rs|inr|₹)/i);
+            amt = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 0;
+          }
           recentTransfers += amt;
         } else {
           pendingTasks++;
@@ -201,7 +212,7 @@ export class MorningBriefingService {
             description: item.summary || item.description || item.title,
             source: sourceName,
             priority: item.priority || 'NORMAL',
-            eventDate: item.eventDate,
+            eventDate: isEvent ? item.eventDate : null,
           });
         }
       }
@@ -226,6 +237,7 @@ Pending Tasks: ${pendingTasks}
 Upcoming Events: ${events}
 Key Priority Items: ${priorityItems.map((p) => `"${p.title}" (${p.type}) from ${p.source}`).join(', ') || 'No urgent items'}
 
+Note: Only real-world social/college/office gatherings (like Convocation, Ceremonies, Parties, Meetings) are events. Technical goals and tasks are tasks.
 Return valid JSON:
 {
   "summary": "warm 1-2 sentence ${timeInfo.key} overview for ${userName} addressing their events and priorities",
