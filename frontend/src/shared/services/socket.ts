@@ -74,9 +74,18 @@ class SocketService {
 
     this.socket.on('disconnect', (reason) => {
       console.log('[Socket] Disconnected:', reason);
-      if (reason === 'io server disconnect' || reason === 'transport close') {
-        setTimeout(() => this.connect(), 1000);
+      if (reason === 'io server disconnect') {
+        console.warn('[Socket] Server disconnected connection (auth rejected). Waiting for valid credentials.');
+        return;
       }
+      if (reason === 'transport close') {
+        setTimeout(() => this.connect(), 2000);
+      }
+    });
+
+    this.socket.on('auth:error', (err) => {
+      console.warn('[Socket] Authentication error from server:', err);
+      this.disconnect();
     });
 
     // Wire up registered event handlers
