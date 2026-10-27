@@ -25,6 +25,9 @@ interface MorningBriefingData {
   success: boolean;
   greeting: string;
   dateFormatted: string;
+  briefingTitle?: string;
+  badgeIcon?: string;
+  timeOfDay?: string;
   summary: string;
   metrics: {
     pendingTasks: number;
@@ -82,7 +85,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="small" color={Colors.primary} />
-        <Text style={styles.loadingText}>Preparing morning briefing...</Text>
+        <Text style={styles.loadingText}>Preparing your daily briefing...</Text>
       </View>
     );
   }
@@ -94,8 +97,8 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
       {/* Top Banner Row */}
       <View style={styles.headerRow}>
         <View style={styles.sunBadge}>
-          <Text style={styles.sunBadgeIcon}>☀️</Text>
-          <Text style={styles.sunBadgeText}>AI MORNING BRIEFING</Text>
+          <Text style={styles.sunBadgeIcon}>{data.badgeIcon || '☀️'}</Text>
+          <Text style={styles.sunBadgeText}>{data.briefingTitle || 'AI DAILY BRIEFING'}</Text>
         </View>
         <TouchableOpacity
           style={styles.closeBtn}

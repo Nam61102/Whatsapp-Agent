@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Alert,
+  AppState,
 } from 'react-native';
 import { Colors } from '../../shared/theme/colors';
 import { apiClient } from '../../shared/services/api';
@@ -29,6 +30,7 @@ import { formatDueDate } from '../../shared/utils/dates';
 import { BadgeLabel } from '../../shared/components/BadgeLabel';
 import { MorningBriefingCard } from './components/MorningBriefingCard';
 import { openGoogleCalendar } from '../../shared/utils/calendarSync';
+import { useFocusEffect } from '@react-navigation/native';
 
 const formatCountdown = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -50,16 +52,21 @@ export const DashboardScreen = ({ navigation }: any) => {
     recentInsights: [],
   });
   const [recentChats, setRecentChats] = useState<any[]>([]);
+  const [briefingRefreshCount, setBriefingRefreshCount] = useState(0);
 
   // Countdown of the first sync after linking WhatsApp. It runs once; null when there is none.
   const [clock, setClock] = useState(Date.now());
   const [firstSyncEnd, setFirstSyncEnd] = useState<number | null>(null);
   const syncingRef = React.useRef(false);
 
+
+
+
   // Only the newest request may write state; a slow older response cannot replace newer data.
   const dashboardSeq = React.useRef(0);
 
   const fetchDashboard = useCallback(async () => {
+    setBriefingRefreshCount((c) => c + 1);
     const seq = ++dashboardSeq.current;
     try {
       // Each part fills in as soon as ITS request answers; the screen never waits for the slowest one.
@@ -619,7 +626,7 @@ export const DashboardScreen = ({ navigation }: any) => {
         <>
           <MorningBriefingCard
             onNavigateToActionCenter={() => navigation.navigate('ExtractionsTab')}
-            refreshTrigger={refreshing ? 1 : 0}
+            refreshTrigger={briefingRefreshCount}
           />
           <View style={styles.section}>
             <View style={styles.sectionHeader}>

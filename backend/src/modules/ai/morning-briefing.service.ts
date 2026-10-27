@@ -15,6 +15,9 @@ export interface MorningBriefingResponse {
   success: boolean;
   greeting: string;
   dateFormatted: string;
+  briefingTitle?: string;
+  badgeIcon?: string;
+  timeOfDay?: string;
   summary: string;
   metrics: {
     pendingTasks: number;
@@ -26,10 +29,55 @@ export interface MorningBriefingResponse {
   generatedAt: string;
 }
 
+function getTimeOfDayInfo(): {
+  greeting: string;
+  icon: string;
+  title: string;
+  key: 'morning' | 'afternoon' | 'evening' | 'night';
+} {
+  const now = new Date();
+  const kolkataHourStr = now.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour12: false,
+    hour: '2-digit',
+  });
+  const hour = parseInt(kolkataHourStr, 10) || now.getHours();
+
+  if (hour >= 4 && hour < 12) {
+    return {
+      greeting: 'Good Morning',
+      icon: '☀️',
+      title: 'AI MORNING BRIEFING',
+      key: 'morning',
+    };
+  } else if (hour >= 12 && hour < 17) {
+    return {
+      greeting: 'Good Afternoon',
+      icon: '🌤️',
+      title: 'AI AFTERNOON BRIEFING',
+      key: 'afternoon',
+    };
+  } else if (hour >= 17 && hour < 21) {
+    return {
+      greeting: 'Good Evening',
+      icon: '🌆',
+      title: 'AI EVENING BRIEFING',
+      key: 'evening',
+    };
+  } else {
+    return {
+      greeting: 'Good Evening',
+      icon: '🌙',
+      title: 'AI NIGHT BRIEFING',
+      key: 'night',
+    };
+  }
+}
+
 @Injectable()
 export class MorningBriefingService {
   private readonly logger = new Logger(MorningBriefingService.name);
-  // In-memory cache by userId:YYYY-MM-DD
+  // In-memory cache by userId:YYYY-MM-DD:period
   private briefingCache = new Map<string, { data: MorningBriefingResponse; expiresAt: number }>();
 
   constructor(private readonly prisma: PrismaService) {}
@@ -58,7 +106,7 @@ export class MorningBriefingService {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': process.env.APP_URL || 'https://whatsapp-ai.local',
-          'X-Title': 'VAI-4 WhatsApp AI Morning Briefing',
+          'X-Title': 'VAI-4 WhatsApp AI Daily Briefing',
         },
         body: JSON.stringify({
           model: 'google/gemini-2.5-flash',
@@ -79,11 +127,12 @@ export class MorningBriefingService {
   }
 
   /**
-   * Generates or retrieves cached daily morning briefing for the user
+   * Generates or retrieves cached daily briefing for the user with dynamic time-of-day awareness
    */
   async getMorningBriefing(userId: string, forceRefresh = false): Promise<MorningBriefingResponse> {
+    const timeInfo = getTimeOfDayInfo();
     const today = new Date().toISOString().slice(0, 10);
-    const cacheKey = `${userId}:${today}`;
+    const cacheKey = `${userId}:${today}:${timeInfo.key}`;
 
     if (!forceRefresh) {
       const cached = this.briefingCache.get(cacheKey);
@@ -100,7 +149,7 @@ export class MorningBriefingService {
       });
       const userName = (user?.name || 'Namrata').trim().split(/\s+/)[0];
 
-      // 2. Fetch active action items
+      // 2. Fetch active action items & extractions
       const activeExtractions = await this.prisma.aIExtraction.findMany({
         where: {
           userId,
@@ -111,10 +160,10 @@ export class MorningBriefingService {
           contact: { select: { displayName: true } },
         },
         orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
-        take: 20,
+        take: 25,
       });
 
-      // 3. Compute metrics
+      // 3. Compute metrics & detect events accurately
       let pendingTasks = 0;
       let events = 0;
       let recentTransfers = 0;
@@ -123,12 +172,23 @@ export class MorningBriefingService {
 
       for (const item of activeExtractions) {
         const type = (item.extractionType || '').toUpperCase();
-        if (type === 'TASK' || type === 'REQUIREMENT' || type === 'FOLLOW_UP') {
-          pendingTasks++;
-        } else if (type === 'EVENT' || type === 'MEETING' || type === 'APPOINTMENT') {
+        const text = `${item.title} ${item.description || ''} ${item.summary || ''}`.toLowerCase();
+        const isEvent =
+          type === 'EVENT' ||
+          type === 'MEETING' ||
+          type === 'APPOINTMENT' ||
+          type === 'CEREMONY' ||
+          item.eventDate !== null ||
+          /ceremony|convocation|passing-out|party|gathering|event|function|meeting|webinar|session|fest/i.test(text);
+
+        if (isEvent) {
           events++;
-        } else if (type === 'PAYMENT' || type === 'INVOICE') {
-          recentTransfers += 350; // default estimated or extracted amount
+        } else if (type === 'PAYMENT' || type === 'INVOICE' || /transfer|rs|₹|payment|paid/i.test(text)) {
+          const amtMatch = text.match(/(?:rs\.?|₹)\s*(\d+(?:,\d+)*(?:\.\d+)?)/i) || text.match(/(\d+)\s*(?:rs|inr)/i);
+          const amt = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, '')) : 350;
+          recentTransfers += amt;
+        } else {
+          pendingTasks++;
         }
 
         if (priorityItems.length < 5) {
@@ -136,7 +196,7 @@ export class MorningBriefingService {
             item.conversation?.title || item.contact?.displayName || 'WhatsApp Contact';
           priorityItems.push({
             id: item.id,
-            type,
+            type: isEvent ? 'EVENT' : type || 'TASK',
             title: item.title,
             description: item.summary || item.description || item.title,
             source: sourceName,
@@ -152,22 +212,23 @@ export class MorningBriefingService {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+        timeZone: 'Asia/Kolkata',
       });
 
-      let summary = `You have ${pendingTasks} pending task${pendingTasks === 1 ? '' : 's'} and ${events} upcoming event${events === 1 ? '' : 's'} today.`;
+      let summary = `${timeInfo.greeting}, ${userName}! You have ${events} upcoming event${events === 1 ? '' : 's'} and ${pendingTasks} active task${pendingTasks === 1 ? '' : 's'}.`;
       let aiTip = 'Stay on top of your daily WhatsApp tasks and communication goals.';
 
       try {
-        const prompt = `You are a friendly personal WhatsApp AI assistant.
-User Name: ${userName}
+        const prompt = `You are a friendly personal WhatsApp AI assistant for ${userName}.
+Current Time of Day: ${timeInfo.key} (${timeInfo.greeting})
 Today's Date: ${dateFormatted}
 Pending Tasks: ${pendingTasks}
 Upcoming Events: ${events}
-Key Priority Items: ${priorityItems.map((p) => `"${p.title}" from ${p.source}`).join(', ') || 'No urgent items'}
+Key Priority Items: ${priorityItems.map((p) => `"${p.title}" (${p.type}) from ${p.source}`).join(', ') || 'No urgent items'}
 
 Return valid JSON:
 {
-  "summary": "warm 1-2 sentence morning overview for ${userName} addressing their tasks and events",
+  "summary": "warm 1-2 sentence ${timeInfo.key} overview for ${userName} addressing their events and priorities",
   "aiTip": "one helpful actionable productivity tip based on today's items"
 }`;
 
@@ -179,42 +240,49 @@ Return valid JSON:
           if (parsed.aiTip) aiTip = parsed.aiTip.trim();
         }
       } catch (aiErr: any) {
-        this.logger.debug(`Morning briefing AI generation fallback: ${aiErr.message}`);
+        this.logger.debug(`Daily briefing AI generation fallback: ${aiErr.message}`);
       }
 
       const response: MorningBriefingResponse = {
         success: true,
-        greeting: `Good Morning, ${userName}! ☀️`,
+        greeting: `${timeInfo.greeting}, ${userName}! ${timeInfo.icon}`,
         dateFormatted,
+        briefingTitle: timeInfo.title,
+        badgeIcon: timeInfo.icon,
+        timeOfDay: timeInfo.key,
         summary,
         metrics: {
           pendingTasks,
           events,
-          recentTransfers: recentTransfers || 350,
+          recentTransfers,
         },
         priorityItems,
         aiTip,
         generatedAt: new Date().toISOString(),
       };
 
-      // Cache for 12 hours (expires at end of day)
+      // Cache for 10 minutes so it remains fast yet responds quickly to updates
       this.briefingCache.set(cacheKey, {
         data: response,
-        expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+        expiresAt: Date.now() + 10 * 60 * 1000,
       });
 
       return response;
     } catch (err: any) {
-      this.logger.error(`Failed to generate morning briefing for user ${userId}: ${err.message}`);
-      // Fallback safe response so frontend NEVER breaks
+      this.logger.error(`Failed to generate briefing for user ${userId}: ${err.message}`);
+      const fallbackInfo = getTimeOfDayInfo();
       return {
         success: true,
-        greeting: 'Good Morning! ☀️',
+        greeting: `${fallbackInfo.greeting}! ${fallbackInfo.icon}`,
         dateFormatted: new Date().toLocaleDateString('en-US', {
           weekday: 'long',
           month: 'short',
           day: 'numeric',
+          timeZone: 'Asia/Kolkata',
         }),
+        briefingTitle: fallbackInfo.title,
+        badgeIcon: fallbackInfo.icon,
+        timeOfDay: fallbackInfo.key,
         summary: 'Your daily WhatsApp communication overview is ready.',
         metrics: { pendingTasks: 0, events: 0, recentTransfers: 0 },
         priorityItems: [],
