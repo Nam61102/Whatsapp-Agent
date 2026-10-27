@@ -52,7 +52,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   const fetchBriefing = useCallback(async (force = false) => {
     try {
       setLoading(true);
-      const url = force ? '/api/v1/ai/morning-briefing?refresh=true' : '/api/v1/ai/morning-briefing';
+      const url = force ? '/ai/morning-briefing?refresh=true' : '/ai/morning-briefing';
       const res: any = await apiClient.get(url);
       if (res && res.success) {
         setData(res);

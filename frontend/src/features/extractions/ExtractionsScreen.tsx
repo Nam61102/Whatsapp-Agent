@@ -23,6 +23,7 @@ import { Illustration } from '../../shared/components/Illustration';
 import { Sticker } from '../../shared/components/Sticker';
 import { formatDueDate } from '../../shared/utils/dates';
 import { BadgeLabel } from '../../shared/components/BadgeLabel';
+import { openGoogleCalendar } from '../../shared/utils/calendarSync';
 
 const CATEGORIES = [
   { key: 'ALL', label: 'All', icon: '⚡' },
@@ -691,6 +692,21 @@ export const ExtractionsScreen = ({ navigation }: any) => {
               <IconText center icon="gift" style={styles.btnPrimaryText}>Reply & Wish Back</IconText>
             </TouchableOpacity>
           )}
+
+          {(item.category === 'MEETING' || item.category === 'APPOINTMENT' || item.category === 'EVENT' || item.category === 'TASK' || item.type === 'TASK' || item.eventDate) && (
+            <TouchableOpacity
+              style={[styles.btnCalendar, { flex: 1 }]}
+              onPress={() =>
+                openGoogleCalendar({
+                  title: item.title,
+                  description: item.summary || item.sourceMessageText,
+                  startDate: item.eventDate,
+                })
+              }
+            >
+              <IconText center icon="calendar" style={styles.btnCalendarText}>Add to Calendar</IconText>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -1130,6 +1146,24 @@ const styles = StyleSheet.create({
   },
   btnSecondaryText: {
     color: '#334155',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  btnCalendar: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#0284C7',
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  btnCalendarText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
   },
