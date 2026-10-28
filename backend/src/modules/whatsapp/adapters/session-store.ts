@@ -20,10 +20,17 @@ export async function backupSessionToMongo(prisma: PrismaService, userId: string
 
     if (!sessionFiles['creds.json']) return;
 
-    const conn = await prisma.whatsAppConnection.findFirst({
+    let conn = await prisma.whatsAppConnection.findFirst({
       where: { userId, isActive: true },
       orderBy: { updatedAt: 'desc' },
     });
+
+    if (!conn) {
+      conn = await prisma.whatsAppConnection.findFirst({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+      });
+    }
 
     if (!conn) return;
 
@@ -40,6 +47,7 @@ export async function backupSessionToMongo(prisma: PrismaService, userId: string
       where: { id: conn.id },
       data: {
         encryptedSessionData: JSON.stringify(meta),
+        isActive: true,
         lastHeartbeatAt: new Date(),
       },
     });
@@ -50,23 +58,22 @@ export async function backupSessionToMongo(prisma: PrismaService, userId: string
   }
 }
 
-export async function restoreAllSessionsFromMongo(prisma: PrismaService): Promise<number> {
-  let restoredCount = 0;
+export async function restoreSessionForUserFromMongo(prisma: PrismaService, userId: string): Promise<boolean> {
   try {
+    const sessionDir = path.join(process.cwd(), 'sessions', userId);
+    const credsPath = path.join(sessionDir, 'creds.json');
+    if (fs.existsSync(credsPath)) return true;
+
     const connections = await prisma.whatsAppConnection.findMany({
       where: {
-        isActive: true,
+        userId,
         encryptedSessionData: { not: null },
       },
+      orderBy: { updatedAt: 'desc' },
     });
 
     for (const conn of connections) {
       if (!conn.encryptedSessionData) continue;
-      const userId = conn.userId;
-      const sessionDir = path.join(process.cwd(), 'sessions', userId);
-      const credsPath = path.join(sessionDir, 'creds.json');
-      if (fs.existsSync(credsPath)) continue;
-
       let meta: any = null;
       try {
         meta = JSON.parse(conn.encryptedSessionData);
@@ -86,6 +93,86 @@ export async function restoreAllSessionsFromMongo(prisma: PrismaService): Promis
           fs.writeFileSync(path.join(sessionDir, filename), content, 'utf-8');
         }
       }
+
+      if (!conn.isActive) {
+        await prisma.whatsAppConnection.update({
+          where: { id: conn.id },
+          data: { isActive: true },
+        }).catch(() => {});
+      }
+
+      logger.log(`[SessionStore] Restored ${Object.keys(files).length} session files for user ${userId}`);
+      return true;
+    }
+  } catch (err: any) {
+    logger.warn(`[SessionStore] Restore session for user ${userId} error: ${err.message}`);
+  }
+  return false;
+}
+
+export async function restoreAllSessionsFromMongo(prisma: PrismaService): Promise<number> {
+  let restoredCount = 0;
+  try {
+    // Check all connections with encryptedSessionData, newest first
+    const connections = await prisma.whatsAppConnection.findMany({
+      where: {
+        encryptedSessionData: { not: null },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const restoredUsers = new Set<string>();
+
+    for (const conn of connections) {
+      if (!conn.encryptedSessionData) continue;
+      const userId = conn.userId;
+      if (restoredUsers.has(userId)) continue;
+
+      const sessionDir = path.join(process.cwd(), 'sessions', userId);
+      const credsPath = path.join(sessionDir, 'creds.json');
+      if (fs.existsSync(credsPath)) {
+        restoredUsers.add(userId);
+        continue;
+      }
+
+      let meta: any = null;
+      try {
+        meta = JSON.parse(conn.encryptedSessionData);
+      } catch {
+        continue;
+      }
+
+      const files = meta?.sessionFiles;
+      if (!files || !files['creds.json']) continue;
+
+      restoredUsers.add(userId);
+
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true });
+      }
+
+      for (const [filename, content] of Object.entries(files)) {
+        if (filename.endsWith('.json') && typeof content === 'string') {
+          fs.writeFileSync(path.join(sessionDir, filename), content, 'utf-8');
+        }
+      }
+
+      if (!conn.isActive) {
+        await prisma.whatsAppConnection.update({
+          where: { id: conn.id },
+          data: { isActive: true },
+        }).catch(() => {});
+      }
+
+      // Deactivate any orphaned/incomplete connections for this user
+      await prisma.whatsAppConnection.updateMany({
+        where: {
+          userId,
+          id: { not: conn.id },
+          isActive: true,
+        },
+        data: { isActive: false },
+      }).catch(() => {});
 
       logger.log(`[SessionStore] Restored ${Object.keys(files).length} session files from MongoDB for user ${userId}`);
       restoredCount++;
