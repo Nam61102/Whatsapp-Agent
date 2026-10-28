@@ -1,6 +1,4 @@
-import { backupSessionToMongo, restoreAllSessionsFromMongo, restoreSessionForUserFromMongo, clearSessionFromMongo } from './adapters/session-store';
-import * as fs from 'fs';
-import * as path from 'path';
+import { backupSessionToMongo, restoreAllSessionsFromMongo, clearSessionFromMongo } from './adapters/session-store';
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
@@ -43,8 +41,16 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('WhatsAppService initialized. WhatsApp provider mode: REAL (Baileys)');
     // Automatically restore registered Baileys sessions across server restarts
     // Long retention needs the full WhatsApp history; a short one only needs the recent part, which arrives much faster.
-    this.baileysAdapter.setFullHistoryPolicy(async (_userId: string) => {
-      return true;
+    this.baileysAdapter.setFullHistoryPolicy(async (userId: string) => {
+      try {
+        const settings = await this.prisma.userSettings.findUnique({
+          where: { userId },
+          select: { retentionDays: true },
+        });
+        return Boolean(settings?.retentionDays && settings.retentionDays > 30);
+      } catch {
+        return false;
+      }
     });
     setTimeout(async () => {
       try {
@@ -357,28 +363,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     ]);
 
     const currentQr = this.baileysAdapter.getQRCode(account.userId);
-    let liveStatus = this.baileysAdapter.getConnectionState(account.userId);
-
-    // Self-healing: If disconnected on server but registered session exists in MongoDB or local disk, auto-restore
-    if (liveStatus === 'DISCONNECTED') {
-      const sessionDir = path.join(process.cwd(), 'sessions', account.userId);
-      const credsPath = path.join(sessionDir, 'creds.json');
-      if (!fs.existsSync(credsPath)) {
-        await restoreSessionForUserFromMongo(this.prisma, account.userId).catch(() => {});
-      }
-      if (fs.existsSync(credsPath)) {
-        try {
-          const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-          if (creds.registered || Boolean(creds.me)) {
-            this.logger.log(`[Self-Healing] Auto-reconnecting registered session for user ${account.userId}`);
-            this.baileysAdapter.connect(account.userId, 'QR', false).catch((err) => {
-              this.logger.warn(`[Self-Healing] Connect failed: ${err.message}`);
-            });
-            liveStatus = 'INITIALIZING';
-          }
-        } catch {}
-      }
-    }
+    const liveStatus = this.baileysAdapter.getConnectionState(account.userId);
     const isActuallyConnected =
       liveStatus === 'CONNECTED' ||
       liveStatus === 'READY' ||
@@ -450,28 +435,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     clientIp?: string
   ) {
     const account = await this.getOrCreateAccount(userId);
-    let liveStatus = this.baileysAdapter.getConnectionState(account.userId);
-
-    // Self-healing: If disconnected on server but registered session exists in MongoDB or local disk, auto-restore
-    if (liveStatus === 'DISCONNECTED') {
-      const sessionDir = path.join(process.cwd(), 'sessions', account.userId);
-      const credsPath = path.join(sessionDir, 'creds.json');
-      if (!fs.existsSync(credsPath)) {
-        await restoreSessionForUserFromMongo(this.prisma, account.userId).catch(() => {});
-      }
-      if (fs.existsSync(credsPath)) {
-        try {
-          const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-          if (creds.registered || Boolean(creds.me)) {
-            this.logger.log(`[Self-Healing] Auto-reconnecting registered session for user ${account.userId}`);
-            this.baileysAdapter.connect(account.userId, 'QR', false).catch((err) => {
-              this.logger.warn(`[Self-Healing] Connect failed: ${err.message}`);
-            });
-            liveStatus = 'INITIALIZING';
-          }
-        } catch {}
-      }
-    }
+    const liveStatus = this.baileysAdapter.getConnectionState(account.userId);
 
     const activeConnection = await this.prisma.whatsAppConnection.findFirst({
       where: { whatsappAccountId: account.id, isActive: true },
@@ -601,28 +565,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Please enter a valid international phone number e.g. +919876543210');
     }
 
-    let liveStatus = this.baileysAdapter.getConnectionState(account.userId);
-
-    // Self-healing: If disconnected on server but registered session exists in MongoDB or local disk, auto-restore
-    if (liveStatus === 'DISCONNECTED') {
-      const sessionDir = path.join(process.cwd(), 'sessions', account.userId);
-      const credsPath = path.join(sessionDir, 'creds.json');
-      if (!fs.existsSync(credsPath)) {
-        await restoreSessionForUserFromMongo(this.prisma, account.userId).catch(() => {});
-      }
-      if (fs.existsSync(credsPath)) {
-        try {
-          const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-          if (creds.registered || Boolean(creds.me)) {
-            this.logger.log(`[Self-Healing] Auto-reconnecting registered session for user ${account.userId}`);
-            this.baileysAdapter.connect(account.userId, 'QR', false).catch((err) => {
-              this.logger.warn(`[Self-Healing] Connect failed: ${err.message}`);
-            });
-            liveStatus = 'INITIALIZING';
-          }
-        } catch {}
-      }
-    }
+    const liveStatus = this.baileysAdapter.getConnectionState(account.userId);
     const activeConnection = await this.prisma.whatsAppConnection.findFirst({
       where: { whatsappAccountId: account.id, isActive: true },
       orderBy: { createdAt: 'desc' },
@@ -1116,28 +1059,7 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`[RESYNC] Initiating live WhatsApp reconciliation for account ${accountId} (user: ${userId})`);
 
     // Trigger live session resync and group participant backfill asynchronously in background
-    let liveStatus = this.baileysAdapter.getConnectionState(account.userId);
-
-    // Self-healing: If disconnected on server but registered session exists in MongoDB or local disk, auto-restore
-    if (liveStatus === 'DISCONNECTED') {
-      const sessionDir = path.join(process.cwd(), 'sessions', account.userId);
-      const credsPath = path.join(sessionDir, 'creds.json');
-      if (!fs.existsSync(credsPath)) {
-        await restoreSessionForUserFromMongo(this.prisma, account.userId).catch(() => {});
-      }
-      if (fs.existsSync(credsPath)) {
-        try {
-          const creds = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
-          if (creds.registered || Boolean(creds.me)) {
-            this.logger.log(`[Self-Healing] Auto-reconnecting registered session for user ${account.userId}`);
-            this.baileysAdapter.connect(account.userId, 'QR', false).catch((err) => {
-              this.logger.warn(`[Self-Healing] Connect failed: ${err.message}`);
-            });
-            liveStatus = 'INITIALIZING';
-          }
-        } catch {}
-      }
-    }
+    const liveStatus = this.baileysAdapter.getConnectionState(account.userId);
     if (liveStatus === 'CONNECTED' || liveStatus === 'READY' || liveStatus === 'SYNCING') {
       Promise.resolve().then(async () => {
         // Every step has a time limit and the flow ALWAYS ends with a finished message, so the card can never
