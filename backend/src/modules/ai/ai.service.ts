@@ -157,6 +157,8 @@ export class AIService implements OnModuleInit {
     return '';
   }
 
+  private dashboardCache = new Map<string, { data: any; expiresAt: number }>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsGateway: EventsGateway

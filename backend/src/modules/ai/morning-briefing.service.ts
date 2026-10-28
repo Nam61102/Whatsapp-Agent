@@ -260,9 +260,9 @@ Return valid JSON:
   "aiTip": "one helpful actionable productivity tip based on today's items"
 }`;
 
-          const rawText = await Promise.race([
+          const rawText = await Promise.race<string | null>([
             this.callOpenRouter(prompt),
-            new Promise((r) => setTimeout(() => r(null), 2500)),
+            new Promise<null>((r) => setTimeout(() => r(null), 2500)),
           ]);
           if (rawText) {
             const cleaned = this.cleanJson(rawText);
