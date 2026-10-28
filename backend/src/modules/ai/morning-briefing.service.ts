@@ -229,13 +229,17 @@ export class MorningBriefingService {
       let summary = `${timeInfo.greeting}, ${userName}! You have ${events} upcoming event${events === 1 ? '' : 's'} and ${pendingTasks} active task${pendingTasks === 1 ? '' : 's'}.`;
       let aiTip = 'Stay on top of your daily WhatsApp tasks and communication goals.';
 
-      try {
-        const prompt = `You are a friendly personal WhatsApp AI assistant for ${userName}.
+      if (pendingTasks === 0 && events === 0 && recentTransfers === 0) {
+        summary = `Good ${timeInfo.key}, ${userName}! You have a clear schedule today with no pending tasks or upcoming events.`;
+        aiTip = 'With no urgent items, consider dedicating some time to proactive planning or focusing on key priorities.';
+      } else {
+        try {
+          const prompt = `You are a friendly personal WhatsApp AI assistant for ${userName}.
 Current Time of Day: ${timeInfo.key} (${timeInfo.greeting})
 Today's Date: ${dateFormatted}
 Pending Tasks: ${pendingTasks}
 Upcoming Events: ${events}
-Key Priority Items: ${priorityItems.map((p) => `"${p.title}" (${p.type}) from ${p.source}`).join(', ') || 'No urgent items'}
+Key Priority Items: ${priorityItems.map((p) => `"${p.title}" (${p.type}) from ${p.source}`).join(", ") || "No urgent items"}
 
 Note: Only real-world social/college/office gatherings (like Convocation, Ceremonies, Parties, Meetings) are events. Technical goals and tasks are tasks.
 Return valid JSON:
@@ -244,15 +248,19 @@ Return valid JSON:
   "aiTip": "one helpful actionable productivity tip based on today's items"
 }`;
 
-        const rawText = await this.callOpenRouter(prompt);
-        if (rawText) {
-          const cleaned = this.cleanJson(rawText);
-          const parsed = JSON.parse(cleaned);
-          if (parsed.summary) summary = parsed.summary.trim();
-          if (parsed.aiTip) aiTip = parsed.aiTip.trim();
+          const rawText = await Promise.race([
+            this.callOpenRouter(prompt),
+            new Promise((r) => setTimeout(() => r(null), 2500)),
+          ]);
+          if (rawText) {
+            const cleaned = this.cleanJson(rawText);
+            const parsed = JSON.parse(cleaned);
+            if (parsed.summary) summary = parsed.summary.trim();
+            if (parsed.aiTip) aiTip = parsed.aiTip.trim();
+          }
+        } catch (aiErr: any) {
+          this.logger.debug(`Daily briefing AI generation fallback: ${aiErr.message}`);
         }
-      } catch (aiErr: any) {
-        this.logger.debug(`Daily briefing AI generation fallback: ${aiErr.message}`);
       }
 
       const response: MorningBriefingResponse = {

@@ -41,16 +41,8 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     this.logger.log('WhatsAppService initialized. WhatsApp provider mode: REAL (Baileys)');
     // Automatically restore registered Baileys sessions across server restarts
     // Long retention needs the full WhatsApp history; a short one only needs the recent part, which arrives much faster.
-    this.baileysAdapter.setFullHistoryPolicy(async (userId: string) => {
-      try {
-        const settings = await this.prisma.userSettings.findUnique({
-          where: { userId },
-          select: { retentionDays: true },
-        });
-        return Boolean(settings?.retentionDays && settings.retentionDays > 30);
-      } catch {
-        return false;
-      }
+    this.baileysAdapter.setFullHistoryPolicy(async (_userId: string) => {
+      return true;
     });
     setTimeout(async () => {
       try {
@@ -395,9 +387,15 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    const syncProg = this.eventService.getSyncProgress(account.userId);
+    const isSyncing = syncProg?.status === 'SYNCING' && isActuallyConnected;
+    const effectiveStatus = isSyncing
+      ? 'SYNCING'
+      : (liveStatus !== 'DISCONNECTED' ? liveStatus : account.status);
+
     return {
       id: account.id,
-      status: liveStatus !== 'DISCONNECTED' ? liveStatus : account.status,
+      status: effectiveStatus,
       phoneNumber: account.phoneNumber,
       displayName: account.displayName,
       lastSyncAt: account.lastSyncAt,

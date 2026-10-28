@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../../shared/theme/colors';
 import { apiClient } from '../../../shared/services/api';
 import { openGoogleCalendar } from '../../../shared/utils/calendarSync';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface PriorityItem {
   id: string;
@@ -52,6 +53,17 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
   const [loading, setLoading] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
+  useEffect(() => {
+    AsyncStorage.getItem('cached_morning_briefing').then((raw) => {
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.success) setData(parsed);
+        } catch {}
+      }
+    }).catch(() => {});
+  }, []);
+
   const fetchBriefing = useCallback(async (force = false) => {
     try {
       setLoading(true);
@@ -59,6 +71,7 @@ export const MorningBriefingCard: React.FC<MorningBriefingCardProps> = ({
       const res: any = await apiClient.get(url);
       if (res && res.success) {
         setData(res);
+        AsyncStorage.setItem('cached_morning_briefing', JSON.stringify(res)).catch(() => {});
       }
     } catch {
       // Graceful fallback - never crash the dashboard

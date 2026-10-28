@@ -437,6 +437,15 @@ export class WhatsAppEventService {
       message: updated.message,
       syncState: updated,
     });
+    if (updated.status === 'SYNCING') {
+      this.eventsGateway.sendToUser(userId, 'whatsapp.status', {
+        status: 'SYNCING',
+      });
+    } else if (finishing) {
+      this.eventsGateway.sendToUser(userId, 'whatsapp.status', {
+        status: 'CONNECTED',
+      });
+    }
   }
 
   async handleConnectionUpdate(

@@ -417,18 +417,41 @@ export const DashboardScreen = ({ navigation }: any) => {
       </View>
 
       {/* Dynamic Sync Banner */}
-      {whatsappStatus === 'SYNCING' && syncProgress && (
+      {(whatsappStatus === 'SYNCING' || syncProgress?.status === 'SYNCING' || showFirstSyncTimer) && (
         <TouchableOpacity
           style={styles.syncBanner}
           onPress={() => setShowSyncModal(true)}
         >
           <View style={styles.syncBannerTop}>
-            <IconText icon="flash" style={styles.syncBannerTitle}>{`WhatsApp Sync in Background (${syncProgress.progress || 0}%)`}</IconText>
+            <IconText icon="flash" style={styles.syncBannerTitle}>
+              {showFirstSyncTimer
+                ? `WhatsApp Sync in Progress (${formatCountdown(firstSyncRemainingMs)} left)`
+                : `WhatsApp Sync in Background (${syncProgress?.progress || 0}%)`}
+            </IconText>
             <Text style={styles.syncBannerAction}>Details ›</Text>
           </View>
-          <Text style={styles.syncBannerMsg}>{syncProgress.message || 'Syncing messages & extracting intelligence...'}</Text>
+          <Text style={styles.syncBannerMsg}>
+            {showFirstSyncTimer
+              ? 'WhatsApp is streaming your messages and chats. Intelligence scan in progress...'
+              : (syncProgress?.message || 'Syncing messages & extracting intelligence...')}
+          </Text>
           <View style={styles.syncMiniBar}>
-            <View style={[styles.syncMiniFill, { width: `${Math.min(100, Math.max(0, syncProgress.progress || 0))}%` }]} />
+            <View
+              style={[
+                styles.syncMiniFill,
+                {
+                  width: `${Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      showFirstSyncTimer
+                        ? Math.max(5, Math.round(((5 * 60 * 1000 - firstSyncRemainingMs) / (5 * 60 * 1000)) * 100))
+                        : (syncProgress?.progress || 0)
+                    )
+                  )}%`,
+                },
+              ]}
+            />
           </View>
         </TouchableOpacity>
       )}
