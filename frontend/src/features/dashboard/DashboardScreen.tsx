@@ -62,6 +62,24 @@ export const DashboardScreen = ({ navigation }: any) => {
 
 
 
+    // Load cached dashboard data on launch so UI displays instantly without a flash of empty state
+  useEffect(() => {
+    (async () => {
+      try {
+        const cachedDash = await AsyncStorage.getItem('cached_dashboard_data');
+        if (cachedDash) {
+          const parsed = JSON.parse(cachedDash);
+          if (parsed && typeof parsed === 'object') setDashboardData(parsed);
+        }
+        const cachedChats = await AsyncStorage.getItem('cached_recent_chats');
+        if (cachedChats) {
+          const parsedChats = JSON.parse(cachedChats);
+          if (Array.isArray(parsedChats)) setRecentChats(parsedChats);
+        }
+      } catch {}
+    })();
+  }, []);
+
   // Only the newest request may write state; a slow older response cannot replace newer data.
   const dashboardSeq = React.useRef(0);
 
@@ -83,10 +101,16 @@ export const DashboardScreen = ({ navigation }: any) => {
           });
       await Promise.all([
         part(apiClient.get('/ai/dashboard'), (r) => {
-          if (typeof r === 'object' && ('actionCenterItems' in r || r.aiEnabled === false)) setDashboardData(r);
+          if (typeof r === 'object' && ('actionCenterItems' in r || r.aiEnabled === false)) {
+            setDashboardData(r);
+            AsyncStorage.setItem('cached_dashboard_data', JSON.stringify(r)).catch(() => {});
+          }
         }),
         part(apiClient.get('/chats?limit=5'), (r) => {
-          if (r.conversations) setRecentChats(r.conversations);
+          if (r.conversations) {
+            setRecentChats(r.conversations);
+            AsyncStorage.setItem('cached_recent_chats', JSON.stringify(r.conversations)).catch(() => {});
+          }
         }),
         part(apiClient.get('/whatsapp/status'), (r) => {
           if (r.status) setWhatsappStatus(r.status);

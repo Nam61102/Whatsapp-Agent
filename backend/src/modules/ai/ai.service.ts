@@ -2140,20 +2140,7 @@ Return ONLY valid JSON:
       const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
       const currentUserName = user?.name || 'User';
 
-      let replyText = fallbackText;
-      try {
-        const genResult = await this.generateReplySuggestionsWithTokens(
-          preview,
-          senderName,
-          null,
-          currentUserName
-        );
-        if (genResult && genResult.items.length > 0) {
-          replyText = genResult.items[0].text;
-        }
-      } catch {
-        // Fall back to fallbackText if Gemini generation fails
-      }
+      const replyText = fallbackText;
 
       const created = await this.prisma.aIReplySuggestion.create({
         data: {

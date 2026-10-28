@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { Colors } from '../../shared/theme/colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../../shared/services/api';
 import { socketService } from '../../shared/services/socket';
 import { resolveDisplayName } from '../../shared/utils/nameResolver';
@@ -283,6 +284,9 @@ export const ExtractionsScreen = ({ navigation }: any) => {
       let incoming: any[] = fromHistory ? (res.items || []).map(fromRecord) : res.extractions || [];
       setTotal(res.total ?? incoming.length);
       setItems((prev) => (mode === 'replace' ? incoming : mergeById(prev, incoming)));
+      if (p.category === 'ALL' && p.view === 'ACTIVE' && incoming.length > 0) {
+        AsyncStorage.setItem('cached_action_center_items', JSON.stringify(incoming)).catch(() => {});
+      }
       setError(null);
     } catch (err: any) {
       if (seq !== requestSeq.current) return;
@@ -304,12 +308,27 @@ export const ExtractionsScreen = ({ navigation }: any) => {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+    // Load cached action center items immediately on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const cached = await AsyncStorage.getItem('cached_action_center_items');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+            setTotal(parsed.length);
+            setLoading(false);
+          }
+        }
+      } catch {}
+    })();
+  }, []);
+
   // Changing any filter starts again from the first page and replaces the list.
   const filtersKey = JSON.stringify([selectedCategory, statusView, filters, debouncedSearch.trim()]);
   useEffect(() => {
-    setLoading(true);
-    setItems([]);
-    setTotal(0);
+    if (items.length === 0) setLoading(true);
     fetchPage(paramsRef.current, 0, 'replace');
   }, [filtersKey, fetchPage]);
 
