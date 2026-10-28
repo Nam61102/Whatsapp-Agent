@@ -11,6 +11,7 @@ import { withTimeout } from '../../shared/with-timeout';
 
 @Injectable()
 export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
+  private statsCache = new Map<string, { stats: any; expiresAt: number }>();
   private readonly logger = new Logger(WhatsAppService.name);
 
   constructor(
@@ -329,18 +330,11 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
     // All of these are independent, so they run together: one round trip to the database instead of seven.
     const own = { userId: account.userId, whatsappAccountId: account.id };
     const active = { ...own, lastMessageAt: { not: null } } as const;
-    const [countContacts, countGroups, countIndividualChats, countChannelChats, countChats, countMessages, activeConnection] = await Promise.all([
-      // Only count contacts truly saved in the connected WhatsApp's address book
-      this.prisma.contact.count({ where: { ...own, isGroup: false, isSavedContact: true } }),
-      this.prisma.conversation.count({ where: { ...active, chatType: 'GROUP' } }),
-      this.prisma.conversation.count({ where: { ...active, chatType: 'INDIVIDUAL' } }),
-      this.prisma.conversation.count({ where: { ...active, chatType: 'CHANNEL' } }),
-      this.prisma.conversation.count({ where: active }),
-      this.prisma.message.count({ where: own }),
-      this.prisma.whatsAppConnection.findFirst({
-        where: { ...own, isActive: true },
-        orderBy: { createdAt: 'desc' },
-        select: {
+
+    const activeConnectionPromise = this.prisma.whatsAppConnection.findFirst({
+      where: { ...own, isActive: true },
+      orderBy: { createdAt: 'desc' },
+      select: {
         id: true,
         connectionStatus: true,
         connectionType: true,
@@ -351,8 +345,50 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
         lastHeartbeatAt: true,
         createdAt: true,
       },
-      }),
-    ]);
+    });
+
+    let statsEntry = this.statsCache.get(account.userId);
+    let countContacts = statsEntry?.stats?.contacts ?? 0;
+    let countGroups = statsEntry?.stats?.groups ?? 0;
+    let countIndividualChats = statsEntry?.stats?.individualChats ?? 0;
+    let countChannelChats = statsEntry?.stats?.channelChats ?? 0;
+    let countChats = statsEntry?.stats?.chats ?? 0;
+    let countMessages = statsEntry?.stats?.messages ?? 0;
+    let activeConnection: any;
+
+    if (!statsEntry || Date.now() > statsEntry.expiresAt) {
+      try {
+        const [counts, conn] = await Promise.all([
+          Promise.race([
+            Promise.all([
+              this.prisma.contact.count({ where: { ...own, isGroup: false, isSavedContact: true } }).catch(() => 0),
+              this.prisma.conversation.count({ where: { ...active, chatType: 'GROUP' } }).catch(() => 0),
+              this.prisma.conversation.count({ where: { ...active, chatType: 'INDIVIDUAL' } }).catch(() => 0),
+              this.prisma.conversation.count({ where: { ...active, chatType: 'CHANNEL' } }).catch(() => 0),
+              this.prisma.conversation.count({ where: active }).catch(() => 0),
+              this.prisma.message.count({ where: own }).catch(() => 0),
+            ]),
+            new Promise<number[]>((r) => setTimeout(() => r([countContacts, countGroups, countIndividualChats, countChannelChats, countChats, countMessages]), 2000)),
+          ]),
+          activeConnectionPromise.catch(() => null),
+        ]);
+        activeConnection = conn;
+        countContacts = counts[0];
+        countGroups = counts[1];
+        countIndividualChats = counts[2];
+        countChannelChats = counts[3];
+        countChats = counts[4];
+        countMessages = counts[5];
+        this.statsCache.set(account.userId, {
+          stats: { contacts: countContacts, groups: countGroups, individualChats: countIndividualChats, channelChats: countChannelChats, chats: countChats, messages: countMessages },
+          expiresAt: Date.now() + 45000,
+        });
+      } catch {
+        activeConnection = await activeConnectionPromise.catch(() => null);
+      }
+    } else {
+      activeConnection = await activeConnectionPromise.catch(() => null);
+    }
 
     const currentQr = this.baileysAdapter.getQRCode(account.userId);
     const liveStatus = this.baileysAdapter.getConnectionState(account.userId);

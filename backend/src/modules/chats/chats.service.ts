@@ -28,23 +28,31 @@ export class ChatsService {
   ): Promise<Map<string, { text: string | null; at: Date; isFromMe: boolean; sender: string | null }>> {
     const out = new Map<string, { text: string | null; at: Date; isFromMe: boolean; sender: string | null }>();
     if (chatIds.length === 0) return out;
-    const res: any = await this.prisma.$runCommandRaw({
-      aggregate: 'messages',
-      pipeline: [
-        { $match: { conversationId: { $in: chatIds.map((id) => ({ $oid: id })) } } },
-        { $sort: { messageTimestamp: -1 } },
-        {
-          $group: {
-            _id: '$conversationId',
-            text: { $first: '$textContent' },
-            at: { $first: '$messageTimestamp' },
-            isFromMe: { $first: '$isFromMe' },
-            sender: { $first: '$metadata.senderName' },
-          },
-        },
-      ],
-      cursor: {},
-    });
+    let res: any = null;
+    try {
+      res = await Promise.race([
+        this.prisma.$runCommandRaw({
+          aggregate: 'messages',
+          pipeline: [
+            { $match: { conversationId: { $in: chatIds.map((id) => ({ $oid: id })) } } },
+            { $sort: { messageTimestamp: -1 } },
+            {
+              $group: {
+                _id: '$conversationId',
+                text: { $first: '$textContent' },
+                at: { $first: '$messageTimestamp' },
+                isFromMe: { $first: '$isFromMe' },
+                sender: { $first: '$metadata.senderName' },
+              },
+            },
+          ],
+          cursor: {},
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('aggregation timeout')), 2500)),
+      ]);
+    } catch {
+      return out;
+    }
     for (const r of res?.cursor?.firstBatch ?? []) {
       const id = r._id?.$oid ?? String(r._id);
       const at = new Date(r.at?.$date ?? r.at);

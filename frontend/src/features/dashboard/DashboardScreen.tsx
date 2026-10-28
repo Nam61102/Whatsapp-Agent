@@ -244,7 +244,7 @@ export const DashboardScreen = ({ navigation }: any) => {
     if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     fetchTimeoutRef.current = setTimeout(() => {
       if (fetchDashboardRef.current) fetchDashboardRef.current();
-    }, 800);
+    }, 300);
   }, []);
 
   // Dismissing is an explicit action saved on the server; if saving fails the card comes back.
@@ -267,8 +267,42 @@ export const DashboardScreen = ({ navigation }: any) => {
   useEffect(() => {
     fetchDashboard();
 
+    // Foreground listener: fetch fresh data when returning to app
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        if (fetchDashboardRef.current) fetchDashboardRef.current();
+      }
+    });
+
+    const handleInstantMessage = (payload: any) => {
+      if (payload?.chatId && payload?.message) {
+        setRecentChats((prev) => {
+          const list = [...prev];
+          const chatId = payload.chatId;
+          const extId = payload.message?.remoteJid || payload.message?.conversation?.externalChatId;
+          const idx = list.findIndex((c) => c.id === chatId || (extId && c.externalChatId === extId));
+          const text = payload.message?.textContent || '[Message]';
+          const time = payload.message?.messageTimestamp || new Date().toISOString();
+          if (idx >= 0) {
+            const updated = {
+              ...list[idx],
+              lastMessageText: text,
+              lastMessageAt: time,
+              unreadCount: (list[idx].unreadCount || 0) + 1,
+            };
+            list.splice(idx, 1);
+            list.unshift(updated);
+            return list;
+          }
+          return list;
+        });
+      }
+      debouncedFetchDashboard();
+    };
+
     const unsubEvents = [
       socketService.on('dashboard:updated', debouncedFetchDashboard),
+      socketService.on('briefing:updated', () => setBriefingRefreshCount((c) => c + 1)),
       socketService.on('whatsapp:data_reset', () => {
         setWhatsappStatus('DISCONNECTED');
         setSyncProgress(null);
@@ -279,9 +313,23 @@ export const DashboardScreen = ({ navigation }: any) => {
       socketService.on('ai:extraction-updated', debouncedFetchDashboard),
       socketService.on('ai:suggestion', debouncedFetchDashboard),
       socketService.on('ai.extraction.created', debouncedFetchDashboard),
-      socketService.on('message:new', debouncedFetchDashboard),
-      socketService.on('chat.message.new', debouncedFetchDashboard),
-      socketService.on('conversation:updated', debouncedFetchDashboard),
+      socketService.on('message:new', handleInstantMessage),
+      socketService.on('chat.message.new', handleInstantMessage),
+      socketService.on('conversation:updated', (payload: any) => {
+        if (payload?.conversation) {
+          setRecentChats((prev) => {
+            const list = [...prev];
+            const idx = list.findIndex((c) => c.id === payload.conversation.id || c.externalChatId === payload.conversation.externalChatId);
+            if (idx >= 0) {
+              list[idx] = { ...list[idx], ...payload.conversation };
+            } else {
+              list.unshift(payload.conversation);
+            }
+            return list.slice(0, 5);
+          });
+        }
+        debouncedFetchDashboard();
+      }),
       socketService.on('whatsapp.status', (data: any) => {
         if (data?.status) {
           if (data.status === 'DISCONNECTED') {
@@ -320,6 +368,7 @@ export const DashboardScreen = ({ navigation }: any) => {
 
     return () => {
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      appStateSub?.remove?.();
       unsubEvents.forEach((unsub) => {
         if (typeof unsub === 'function') unsub();
       });

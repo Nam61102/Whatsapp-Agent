@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { AppState, AppStateStatus } from 'react-native';
 import { AuthStorage } from './authStorage';
 import { SOCKET_URL } from '../config/env';
 
@@ -9,8 +10,11 @@ class SocketService {
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
   private isBfCacheListenerAdded = false;
 
+  private appStateSubscription: any = null;
+
   constructor() {
     this.setupBfCacheHandler();
+    this.setupAppStateHandler();
   }
 
   private setupBfCacheHandler() {
@@ -28,6 +32,23 @@ class SocketService {
           this.reconnect();
         }
       });
+    }
+  }
+
+  private setupAppStateHandler() {
+    if (this.appStateSubscription) return;
+    try {
+      this.appStateSubscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+        if (nextAppState === 'active') {
+          console.log('[Socket] App entered foreground. Checking connection...');
+          if (!this.socket?.connected) {
+            console.log('[Socket] Reconnecting active WebSocket...');
+            this.reconnect();
+          }
+        }
+      });
+    } catch (e) {
+      console.warn('[Socket] Failed to attach AppState listener:', e);
     }
   }
 

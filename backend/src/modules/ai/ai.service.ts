@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
+import { MorningBriefingService } from './morning-briefing.service';
+import { Optional } from '@nestjs/common';
 import { isRawIdentifier, resolveDisplayName } from '../../shared/name-resolver';
 import {
   AIProcessingError,
@@ -940,6 +942,7 @@ export class AIService implements OnModuleInit {
               },
             });
             this.eventsGateway.sendToUser(userId, 'ai:suggestion', { messageId, conversationId, suggestions: [best] });
+            this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId });
           }
         }
       }
@@ -965,6 +968,7 @@ export class AIService implements OnModuleInit {
       });
       await this.prisma.message.update({ where: { id: messageId }, data: { aiStatus: 'PROCESSED' } }).catch(() => {});
       this.eventsGateway.sendToUser(userId, 'ai:completed', { messageId, conversationId });
+      this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId });
     } catch (raw: any) {
       const err = this.toProcessingError(raw, stage);
       const attempts = job.attempts + 1;
@@ -2060,29 +2064,41 @@ Return ONLY valid JSON:
    * Dashboard Overview data for NRYN Action Center.
    */
   async getDashboardOverview(userId: string, whatsappAccountId: string) {
-    // Settings, token stats and the action items do not depend on each other, so they are fetched together.
-    // (Items are fetched even when AI is off and then discarded: that costs nothing extra in waiting time.)
-    const [tokenStats, actionItems] = await Promise.all([
-      this.getTokenUsageStats(userId, whatsappAccountId),
-      this.getActionCenterItems(userId, whatsappAccountId, 50, 'ALL').catch(() => [] as any[]),
-    ]);
-    const autoAIAnalysis = tokenStats.autoAIAnalysis;
-
-    if (!autoAIAnalysis) {
-      return {
-        aiEnabled: false,
-        actionCenterItems: [],
-        totalActionItems: 0,
-        tokenStats,
-      };
+    const cacheKey = `${userId}:${whatsappAccountId}`;
+    const cached = this.dashboardCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.data;
     }
 
-    return {
-      aiEnabled: true,
-      actionCenterItems: actionItems.slice(0, 5),
-      totalActionItems: actionItems.length,
-      tokenStats,
-    };
+    try {
+      const [tokenStats, actionItems] = await Promise.all([
+        this.getTokenUsageStats(userId, whatsappAccountId),
+        Promise.race([
+          this.getActionCenterItems(userId, whatsappAccountId, 50, 'ALL'),
+          new Promise<any[]>((r) => setTimeout(() => r(cached?.data?.actionCenterItems || []), 2500)),
+        ]).catch(() => [] as any[]),
+      ]);
+      const autoAIAnalysis = tokenStats.autoAIAnalysis;
+
+      const result = !autoAIAnalysis
+        ? {
+            aiEnabled: false,
+            actionCenterItems: [],
+            totalActionItems: 0,
+            tokenStats,
+          }
+        : {
+            aiEnabled: true,
+            actionCenterItems: actionItems.slice(0, 5),
+            totalActionItems: actionItems.length,
+            tokenStats,
+          };
+
+      this.dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+      return result;
+    } catch {
+      return cached?.data || { aiEnabled: true, actionCenterItems: [], totalActionItems: 0, tokenStats: null };
+    }
   }
 
   private generateFallbackReply(extractionType: string, previewText: string, senderName: string, summary?: string): string {

@@ -82,6 +82,18 @@ export class MorningBriefingService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  clearCache(userId?: string): void {
+    if (!userId) {
+      this.briefingCache.clear();
+      return;
+    }
+    for (const key of this.briefingCache.keys()) {
+      if (key.startsWith(userId + ':')) {
+        this.briefingCache.delete(key);
+      }
+    }
+  }
+
   private cleanJson(raw: string): string {
     const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
     const start = stripped.indexOf('{');
