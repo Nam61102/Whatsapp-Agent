@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { MorningBriefingService } from '../ai/morning-briefing.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../gateway/events.gateway';
 import { AIService } from '../ai/ai.service';
@@ -57,7 +58,8 @@ export class WhatsAppEventService {
     private readonly aiService: AIService,
     private readonly aiQueueService: AIQueueService,
     private readonly baileysAdapter: BaileysAdapter,
-    private readonly chatTitles: ChatTitleService
+    private readonly chatTitles: ChatTitleService,
+    @Optional() private readonly morningBriefingService?: MorningBriefingService
   ) {}
 
   /** Runs fn over items with at most `limit` in flight. The database is far away, so one call at a time is very slow. */
@@ -925,6 +927,19 @@ export class WhatsAppEventService {
         );
         if (!isNoise) {
           const cleanSenderName = resolveDisplayName(savedContact, savedConversation?.title, isGroup);
+          // Fast instant extraction for meetings, birthdays, tasks, payments (<100ms)
+          this.handleInstantExtraction(
+            userId,
+            whatsappAccountId,
+            savedConversation.id,
+            savedContact?.id,
+            savedMessage.id,
+            textContent,
+            cleanSenderName,
+            isGroup,
+            savedConversation?.title
+          ).catch((e: any) => this.logger.warn(`Instant extraction error: ${e.message}`));
+
           this.processMessageAI(
             userId,
             whatsappAccountId,
@@ -2134,6 +2149,76 @@ export class WhatsAppEventService {
     }
 
     return inserted + existingIdSet.size;
+  }
+
+  private async handleInstantExtraction(
+    userId: string,
+    whatsappAccountId: string,
+    conversationId: string,
+    contactId: string | undefined,
+    messageId: string,
+    text: string,
+    senderName: string,
+    isGroup: boolean,
+    conversationTitle?: string
+  ) {
+    const t = text.toLowerCase();
+    const isBirthday = /birth\s?day|b'?day|bday|bdy|birthay|b-day|janm\s?din|janamdin|वाढदिवस|जन्मदिन|बर्थडे|hbd/i.test(t);
+    const isMeeting = /\b(meeting|meet|zoom|google meet|teams|call|bhetuya|bhet|appointment|interview|discussion|sync|collab)\b/i.test(t);
+    const isPayment = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)|\b(payment|fees?|invoice|paid|bhejo|transfer)\b/i.test(t);
+    const isTask = /\b(urgent|asap|deadline|immediately|please send|share karo|bhejo|submit|submission|task|todo|work|complete|assignment)\b/i.test(t);
+
+    if (!isBirthday && !isMeeting && !isPayment && !isTask) return;
+
+    const extractionType = isBirthday ? 'BIRTHDAY' : isMeeting ? 'MEETING' : isPayment ? 'PAYMENT' : 'TASK';
+    const title = isBirthday
+      ? `Birthday: ${senderName}`
+      : isMeeting
+      ? `Meeting with ${senderName}`
+      : isPayment
+      ? `Payment update from ${senderName}`
+      : `Task from ${senderName}`;
+
+    const itemKey = `instant_${messageId}`;
+
+    const extraction = await this.prisma.aIExtraction.create({
+      data: {
+        userId,
+        whatsappAccountId,
+        conversationId,
+        contactId: contactId || null,
+        messageId,
+        itemKey,
+        extractionType,
+        title,
+        summary: text,
+        description: text,
+        status: 'ACTIVE',
+        priority: isMeeting || isBirthday ? 'URGENT' : 'HIGH',
+        actionRequired: true,
+        eventDate: isMeeting || isBirthday ? new Date() : null,
+        importanceScore: 1.0,
+        confidenceScore: 0.95,
+        timezone: 'Asia/Kolkata',
+      },
+      include: {
+        contact: { select: { displayName: true, profilePhotoUrl: true } },
+        conversation: { select: { title: true } },
+      },
+    });
+
+    // Invalidate caches immediately
+    if (this.morningBriefingService) this.morningBriefingService.clearCache(userId);
+    this.aiService.clearDashboardCache(userId);
+
+    // Broadcast instant socket events to user and account
+    const payload = { extraction, messageId, conversationId };
+    this.eventsGateway.sendToUser(userId, 'ai:extraction', payload);
+    this.eventsGateway.sendToAccount(whatsappAccountId, 'ai:extraction', payload);
+    this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId, instant: true });
+    this.eventsGateway.sendToAccount(whatsappAccountId, 'dashboard:updated', { conversationId, instant: true });
+    this.eventsGateway.sendToUser(userId, 'briefing:updated', { instant: true });
+    this.logger.log(`[INSTANT_EXTRACTION] Emitted ${extractionType} instantly for message ${messageId}: "${title}"`);
   }
 
   private async processMessageAI(

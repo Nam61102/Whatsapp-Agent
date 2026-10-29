@@ -161,8 +161,21 @@ export class AIService implements OnModuleInit {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly eventsGateway: EventsGateway
+    private readonly eventsGateway: EventsGateway,
+    @Optional() private readonly morningBriefingService?: MorningBriefingService
   ) {}
+
+  clearDashboardCache(userId?: string) {
+    if (!userId) {
+      this.dashboardCache.clear();
+      return;
+    }
+    for (const key of this.dashboardCache.keys()) {
+      if (key.startsWith(`${userId}:`)) {
+        this.dashboardCache.delete(key);
+      }
+    }
+  }
 
   async onModuleInit() {
     await this.cleanupInvalidReplySuggestions();
@@ -539,8 +552,23 @@ export class AIService implements OnModuleInit {
     // Items already saved for this message (same key, or the same action worded slightly differently)
     const saved = await this.prisma.aIExtraction.findMany({
       where: { messageId },
-      select: { extractionType: true, itemKey: true, supportingText: true, title: true },
+      select: { id: true, extractionType: true, itemKey: true, supportingText: true, title: true },
     });
+    const instantItem = saved.find((s) => s.itemKey?.startsWith('instant_'));
+    if (instantItem && ctx.items.length > 0) {
+      const best = ctx.items[0];
+      await this.prisma.aIExtraction.update({
+        where: { id: instantItem.id },
+        data: {
+          title: best.title,
+          summary: best.description,
+          description: best.description,
+          eventDate: best.eventDate ? new Date(best.eventDate) : undefined,
+          structuredData: (best as any).structuredData as any,
+          confidenceScore: best.confidence,
+        },
+      }).catch(() => {});
+    }
     let fresh: ExtractedItem[] = [];
     for (const item of ctx.items) {
       if (!saved.some((s) => isSameSavedItem(s as any, item))) fresh.push(item);
@@ -886,7 +914,10 @@ export class AIService implements OnModuleInit {
         }
         if (saved.created.length + saved.updated.length > 0) {
           this.dashboardCache.delete(`${userId}:${whatsappAccountId}`);
+          if (this.morningBriefingService) this.morningBriefingService.clearCache(userId);
           this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId });
+          this.eventsGateway.sendToAccount(whatsappAccountId, 'dashboard:updated', { conversationId });
+          this.eventsGateway.sendToUser(userId, 'briefing:updated', { conversationId });
         }
       }
 

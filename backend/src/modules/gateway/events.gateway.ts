@@ -59,6 +59,8 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId = userId;
 
       client.join(`user:${userId}`);
+      if (decoded.sub) client.join(`user:${decoded.sub}`);
+      if (decoded.authUserId) client.join(`user:${decoded.authUserId}`);
       this.logger.log(`Client authenticated: ${client.id} for user: ${userId}`);
     } catch (err: any) {
       this.logger.warn(`WebSocket authentication error: ${err.message}`);
