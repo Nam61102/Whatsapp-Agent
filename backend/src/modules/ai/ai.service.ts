@@ -2076,10 +2076,7 @@ Return ONLY valid JSON:
     try {
       const [tokenStats, actionItems] = await Promise.all([
         this.getTokenUsageStats(userId, whatsappAccountId),
-        Promise.race([
-          this.getActionCenterItems(userId, whatsappAccountId, 50, 'ALL'),
-          new Promise<any[]>((r) => setTimeout(() => r(cached?.data?.actionCenterItems || []), 2500)),
-        ]).catch(() => [] as any[]),
+        this.getActionCenterItems(userId, whatsappAccountId, 20, 'ALL').catch(() => [] as any[]),
       ]);
       const autoAIAnalysis = tokenStats.autoAIAnalysis;
 
@@ -2097,7 +2094,9 @@ Return ONLY valid JSON:
             tokenStats,
           };
 
-      this.dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+      if (result.actionCenterItems.length > 0) {
+        this.dashboardCache.set(cacheKey, { data: result, expiresAt: Date.now() + 15000 });
+      }
       return result;
     } catch {
       return cached?.data || { aiEnabled: true, actionCenterItems: [], totalActionItems: 0, tokenStats: null };

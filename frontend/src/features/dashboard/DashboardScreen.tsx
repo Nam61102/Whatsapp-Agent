@@ -100,10 +100,24 @@ export const DashboardScreen = ({ navigation }: any) => {
             if (live()) setLoading(false);
           });
       await Promise.all([
-        part(apiClient.get('/ai/dashboard'), (r) => {
+        part(apiClient.get('/ai/dashboard'), async (r) => {
           if (typeof r === 'object' && ('actionCenterItems' in r || r.aiEnabled === false)) {
-            setDashboardData(r);
-            AsyncStorage.setItem('cached_dashboard_data', JSON.stringify(r)).catch(() => {});
+            let data = r;
+            // Fallback: if actionCenterItems is empty, fetch top 5 from /extractions so dashboard never misses items
+            if ((!data.actionCenterItems || data.actionCenterItems.length === 0) && data.aiEnabled !== false) {
+              try {
+                const extRes: any = await apiClient.get('/extractions?limit=5');
+                if (extRes?.extractions && extRes.extractions.length > 0) {
+                  data = {
+                    ...data,
+                    actionCenterItems: extRes.extractions,
+                    totalActionItems: extRes.total || extRes.extractions.length,
+                  };
+                }
+              } catch {}
+            }
+            setDashboardData(data);
+            AsyncStorage.setItem('cached_dashboard_data', JSON.stringify(data)).catch(() => {});
           }
         }),
         part(apiClient.get('/chats?limit=5'), (r) => {

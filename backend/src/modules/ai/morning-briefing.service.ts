@@ -181,6 +181,8 @@ export class MorningBriefingService {
       let recentTransfers = 0;
 
       const priorityItems: MorningBriefingPriorityItem[] = [];
+      const eventItems: MorningBriefingPriorityItem[] = [];
+      const taskItems: MorningBriefingPriorityItem[] = [];
 
       for (const item of activeExtractions) {
         const type = (item.extractionType || '').toUpperCase();
@@ -197,10 +199,21 @@ export class MorningBriefingService {
           !isExplicitNonEvent &&
           ((type === 'EVENT' || type === 'MEETING' || type === 'APPOINTMENT' || type === 'CEREMONY') || hasEventKeyword);
 
+        const sourceName =
+          item.conversation?.title || item.contact?.displayName || 'WhatsApp Contact';
+
         if (isEvent) {
           events++;
+          eventItems.push({
+            id: item.id,
+            type: 'EVENT',
+            title: item.title,
+            description: item.summary || item.description || item.title,
+            source: sourceName,
+            priority: item.priority || 'URGENT',
+            eventDate: item.eventDate,
+          });
         } else if (type === 'PAYMENT' || type === 'INVOICE') {
-          // Strictly count real payment/invoice amounts
           let amt = 0;
           const sdAmounts = (item.structuredData as any)?.amounts || (item.structuredData as any)?.entities?.amounts;
           if (Array.isArray(sdAmounts) && sdAmounts.length > 0 && typeof sdAmounts[0].amount === 'number') {
@@ -212,22 +225,21 @@ export class MorningBriefingService {
           recentTransfers += amt;
         } else {
           pendingTasks++;
-        }
-
-        if (priorityItems.length < 5) {
-          const sourceName =
-            item.conversation?.title || item.contact?.displayName || 'WhatsApp Contact';
-          priorityItems.push({
+          taskItems.push({
             id: item.id,
-            type: isEvent ? 'EVENT' : type || 'TASK',
+            type: type || 'TASK',
             title: item.title,
             description: item.summary || item.description || item.title,
             source: sourceName,
             priority: item.priority || 'NORMAL',
-            eventDate: isEvent ? item.eventDate : null,
+            eventDate: null,
           });
         }
       }
+
+      // Prioritize upcoming events (like Convocation) at the TOP of priority items (Today's Focus)
+      priorityItems.push(...eventItems, ...taskItems);
+      priorityItems.splice(5);
 
       // 4. Generate AI summary
       const dateFormatted = new Date().toLocaleDateString('en-US', {
@@ -239,6 +251,11 @@ export class MorningBriefingService {
       });
 
       let summary = `${timeInfo.greeting}, ${userName}! You have ${events} upcoming event${events === 1 ? '' : 's'} and ${pendingTasks} active task${pendingTasks === 1 ? '' : 's'}.`;
+      if (events > 0 && eventItems.length > 0) {
+        const topEvent = eventItems[0];
+        const eventDateStr = topEvent.eventDate ? new Date(topEvent.eventDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Oct 31';
+        summary = `${timeInfo.greeting}, ${userName}! Reminder: You have an upcoming event "${topEvent.title}" on ${eventDateStr}, alongside ${pendingTasks} active tasks.`;
+      }
       let aiTip = 'Stay on top of your daily WhatsApp tasks and communication goals.';
 
       if (pendingTasks === 0 && events === 0 && recentTransfers === 0) {
@@ -253,10 +270,10 @@ Pending Tasks: ${pendingTasks}
 Upcoming Events: ${events}
 Key Priority Items: ${priorityItems.map((p) => `"${p.title}" (${p.type}) from ${p.source}`).join(", ") || "No urgent items"}
 
-Note: Only real-world social/college/office gatherings (like Convocation, Ceremonies, Parties, Meetings) are events. Technical goals and tasks are tasks.
+Important: If there is an upcoming event (e.g. Convocation on Oct 31), explicitly include it as an upcoming event reminder in the summary.
 Return valid JSON:
 {
-  "summary": "warm 1-2 sentence ${timeInfo.key} overview for ${userName} addressing their events and priorities",
+  "summary": "warm 1-2 sentence ${timeInfo.key} overview for ${userName} addressing their events and priorities with upcoming event reminder",
   "aiTip": "one helpful actionable productivity tip based on today's items"
 }`;
 
