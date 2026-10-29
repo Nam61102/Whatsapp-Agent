@@ -262,10 +262,8 @@ export const WhatsAppConnectScreen = ({ navigation }: any) => {
       if (data.status === 'CONNECTED' || data.status === 'READY') {
         // Only a real link counts (a QR / pairing code was shown in this session). A routine
         // 'connected' event on reload or reconnect must never start a first sync.
-        if (sawLinkStepRef.current) {
-          sawLinkStepRef.current = false;
-          markFirstSyncPending();
-        }
+        markFirstSyncPending().catch(() => {});
+        sawLinkStepRef.current = false;
         apiClient.get('/auth/me').then((me: any) => {
           if (me) AuthStorage.setUser(me);
         }).catch(() => {});

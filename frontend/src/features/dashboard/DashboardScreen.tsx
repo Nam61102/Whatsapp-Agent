@@ -20,7 +20,7 @@ import { resolveDisplayName } from '../../shared/utils/nameResolver';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { SyncProgressBar } from '../../shared/components/SyncProgressBar';
-import { consumeFirstSync } from '../../shared/utils/firstSync';
+import { getFirstSyncEnd, shouldOpenFirstSyncModal, consumeFirstSync } from '../../shared/utils/firstSync';
 import { IconText } from '../../shared/components/IconText';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../../shared/components/Avatar';
@@ -149,31 +149,54 @@ export const DashboardScreen = ({ navigation }: any) => {
     }
   };
 
-  // First sync after linking WhatsApp: the card opens once, its countdown runs once.
-  // A reload, a reconnect or a later login never opens it again.
-  useEffect(() => {
-    let cancelled = false;
-    consumeFirstSync().then((first) => {
-      if (cancelled || !first) return;
-      setFirstSyncEnd(first.endsAt);
+  // First sync after linking WhatsApp: 5-minute countdown anchored to linking time.
+  // Persists across reloads, navigation, and backgrounding.
+  const checkFirstSync = useCallback(() => {
+    getFirstSyncEnd().then((endsAt) => {
+      if (!endsAt) {
+        setFirstSyncEnd(null);
+        return;
+      }
+      setFirstSyncEnd(endsAt);
       setClock(Date.now());
-      setShowSyncModal(true);
+      shouldOpenFirstSyncModal().then((shouldOpen) => {
+        if (shouldOpen) setShowSyncModal(true);
+      });
     });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  // The clock only ticks while that countdown is running.
+  useEffect(() => {
+    checkFirstSync();
+  }, [checkFirstSync]);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkFirstSync();
+    }, [checkFirstSync])
+  );
+
+  // The clock ticks while that countdown is running.
   useEffect(() => {
     if (firstSyncEnd === null) return;
     const tick = setInterval(() => {
       const now = Date.now();
       setClock(now);
-      if (now >= firstSyncEnd) setFirstSyncEnd(null);
+      if (now >= firstSyncEnd) {
+        setFirstSyncEnd(null);
+        fetchDashboard();
+      }
     }, 1000);
     return () => clearInterval(tick);
-  }, [firstSyncEnd]);
+  }, [firstSyncEnd, fetchDashboard]);
+
+  // While 5-minute first sync is active, auto-refresh every 12 seconds so new extractions appear live
+  useEffect(() => {
+    if (!firstSyncEnd) return;
+    const interval = setInterval(() => {
+      fetchDashboard();
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [firstSyncEnd, fetchDashboard]);
 
   const showFirstSyncTimer = firstSyncEnd !== null;
   const firstSyncRemainingMs = firstSyncEnd !== null ? Math.max(0, firstSyncEnd - clock) : 0;
@@ -736,11 +759,25 @@ export const DashboardScreen = ({ navigation }: any) => {
           </View>
 
           {!dashboardData.actionCenterItems || dashboardData.actionCenterItems.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Illustration name="done" size={110} />
-              <Text style={styles.emptyTitle}>Everything caught up!</Text>
-              <Text style={styles.emptySub}>No pending replies, follow-ups, or birthdays requiring action right now.</Text>
-            </View>
+            (showFirstSyncTimer || whatsappStatus === 'SYNCING' || syncProgress?.status === 'SYNCING') ? (
+              <View style={[styles.emptyCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0', paddingVertical: 26 }]}>
+                <ActivityIndicator size="large" color="#059669" style={{ marginBottom: 12 }} />
+                <Text style={[styles.emptyTitle, { color: '#065F46', fontSize: 16 }]}>
+                  WhatsApp मेसेज स्कॅन आणि AI विश्लेषण सुरू आहे...
+                </Text>
+                <Text style={[styles.emptySub, { color: '#047857', marginTop: 6, lineHeight: 20 }]}>
+                  {showFirstSyncTimer
+                    ? `AI तुमच्या WhatsApp मेसेजेसचे विश्लेषण करत आहे (${formatCountdown(firstSyncRemainingMs)} शिल्लक). तुमचे सर्व इव्हेंट्स, टास्क आणि महत्त्वाचे संदेश आपोआप येथे दिसतील.`
+                    : 'AI is analyzing your WhatsApp conversations. Events, tasks, and action items will appear here automatically.'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.emptyCard}>
+                <Illustration name="done" size={110} />
+                <Text style={styles.emptyTitle}>Everything caught up!</Text>
+                <Text style={styles.emptySub}>No pending replies, follow-ups, or birthdays requiring action right now.</Text>
+              </View>
+            )
           ) : (
             dashboardData.actionCenterItems.map((item: any) => {
               const isReplyNeeded = item.category === 'REPLY_NEEDED';

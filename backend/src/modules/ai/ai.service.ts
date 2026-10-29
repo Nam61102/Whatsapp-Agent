@@ -885,6 +885,7 @@ export class AIService implements OnModuleInit {
           this.eventsGateway.sendToUser(userId, 'ai:extraction-updated', { extraction, messageId, conversationId });
         }
         if (saved.created.length + saved.updated.length > 0) {
+          this.dashboardCache.delete(`${userId}:${whatsappAccountId}`);
           this.eventsGateway.sendToUser(userId, 'dashboard:updated', { conversationId });
         }
       }

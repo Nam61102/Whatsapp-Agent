@@ -293,10 +293,11 @@ Return valid JSON:
         generatedAt: new Date().toISOString(),
       };
 
-      // Cache for 10 minutes so it remains fast yet responds quickly to updates
+      // Cache for 10 minutes, but if empty (during initial scan), cache for only 5 seconds
+      const isEmpty = response.metrics.events === 0 && response.metrics.pendingTasks === 0;
       this.briefingCache.set(cacheKey, {
         data: response,
-        expiresAt: Date.now() + 10 * 60 * 1000,
+        expiresAt: Date.now() + (isEmpty ? 5000 : 10 * 60 * 1000),
       });
 
       return response;

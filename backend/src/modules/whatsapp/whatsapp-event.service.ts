@@ -316,15 +316,12 @@ export class WhatsAppEventService {
    */
   private async startHistoryWait(userId: string, whatsappAccountId: string) {
     if (this.historySeen.has(userId) || this.historyTimers.has(userId)) return;
-    // Only a fresh account has anything to wait for; a reconnect of an account with chats does not.
-    const chats = await this.prisma.conversation.count({ where: { userId, whatsappAccountId } });
-    if (chats > 0) return;
 
     this.updateSyncProgress(userId, {
       status: 'SYNCING',
       currentStage: 'CONTACTS',
-      progress: 3,
-      message: 'Connected. Waiting for WhatsApp to send your chats (usually 1 to 3 minutes)...',
+      progress: 5,
+      message: 'Connected. Syncing WhatsApp chats and scanning messages...',
       canContinueToApp: true,
     });
     const timer = setTimeout(() => {
@@ -421,7 +418,7 @@ export class WhatsAppEventService {
             completedAt: new Date(),
           });
         }
-      }, 12000);
+      }, 180000);
       this.syncWatchdogTimers.set(userId, timer);
     } else if (finishing) {
       const existingWatchdog = this.syncWatchdogTimers.get(userId);
