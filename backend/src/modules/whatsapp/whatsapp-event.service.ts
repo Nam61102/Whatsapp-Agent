@@ -338,7 +338,7 @@ export class WhatsAppEventService {
         canContinueToApp: true,
         completedAt: new Date(),
       });
-    }, 45000);
+    }, 12000);
     this.historyTimers.set(userId, timer);
   }
 
@@ -420,7 +420,7 @@ export class WhatsAppEventService {
             completedAt: new Date(),
           });
         }
-      }, 180000);
+      }, 30000);
       this.syncWatchdogTimers.set(userId, timer);
     } else if (finishing) {
       const existingWatchdog = this.syncWatchdogTimers.get(userId);
@@ -583,7 +583,7 @@ export class WhatsAppEventService {
     const settings = await this.prisma.userSettings.findUnique({
       where: { userId },
     });
-    const retentionDays = settings?.retentionDays || 365;
+    const retentionDays = Math.max(settings?.retentionDays || 30, 30);
     const retentionCutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
     if (timestamp < retentionCutoff) {
       this.logger.debug(
@@ -1082,8 +1082,7 @@ export class WhatsAppEventService {
     const existingMap = new Map(existing.map((c) => [c.externalContactId, c]));
 
     const toCreate: any[] = [];
-    const updatePromises: Promise<any>[] = [];
-
+    const toUpdateContacts: Array<{ id: string; displayName: string; phoneNumber: string | null; isGroup: boolean; isBusiness: boolean; isSavedContact: boolean }> = [];
     for (const n of normalised) {
       const row = existingMap.get(n.remoteJid);
       if (!row) {
@@ -1099,20 +1098,17 @@ export class WhatsAppEventService {
         });
       } else {
         const name = nextContactName(row, { name: n.displayName, isSaved: n.isSavedInAddressBook });
-        updatePromises.push(
-          this.prisma.contact
-            .update({
-              where: { id: row.id },
-              data: {
-                displayName: name.displayName ?? n.displayName,
-                ...(n.phoneNumber ? { phoneNumber: n.phoneNumber } : {}),
-                isGroup: n.isGroup || n.isNewsletter,
-                isBusiness: Boolean(n.verifiedName),
-                isSavedContact: name.isSavedContact,
-              },
-            })
-            .catch(() => {})
-        );
+        const targetName = name.displayName ?? n.displayName;
+        if (row.displayName !== targetName || row.isSavedContact !== name.isSavedContact) {
+          toUpdateContacts.push({
+            id: row.id,
+            displayName: targetName,
+            phoneNumber: n.phoneNumber,
+            isGroup: n.isGroup || n.isNewsletter,
+            isBusiness: Boolean(n.verifiedName),
+            isSavedContact: name.isSavedContact,
+          });
+        }
       }
     }
 
@@ -1127,7 +1123,27 @@ export class WhatsAppEventService {
         }
       }
     }
-    if (updatePromises.length) await Promise.all(updatePromises);
+
+    const contactChunkSize = 30;
+    for (let i = 0; i < toUpdateContacts.length; i += contactChunkSize) {
+      const batch = toUpdateContacts.slice(i, i + contactChunkSize);
+      await Promise.all(
+        batch.map((b) =>
+          this.prisma.contact
+            .update({
+              where: { id: b.id },
+              data: {
+                displayName: b.displayName,
+                ...(b.phoneNumber ? { phoneNumber: b.phoneNumber } : {}),
+                isGroup: b.isGroup,
+                isBusiness: b.isBusiness,
+                isSavedContact: b.isSavedContact,
+              },
+            })
+            .catch(() => {})
+        )
+      );
+    }
 
     this.eventsGateway.sendToUser(userId, 'contacts:updated', { count: normalised.length });
     await this.storeChatTitles(userId, whatsappAccountId);
@@ -1397,8 +1413,8 @@ export class WhatsAppEventService {
       for (const c of refetched) convMap.set(c.externalChatId, c);
     }
 
-    // Update conversations that already existed when the name/unreadCount changes.
-    const updatePromises: Promise<any>[] = [];
+    // Update conversations that already existed only when fields actually change
+    const toUpdateConvs: Array<{ id: string; data: any; remoteJid: string; isNewsletter: boolean; titleWorth: string | null }> = [];
     for (const n of normalisedChats) {
       const conv = convMap.get(n.remoteJid);
       const contact = contactMap.get(n.remoteJid);
@@ -1407,20 +1423,27 @@ export class WhatsAppEventService {
         n.chatTitle && n.chatTitle !== 'Unnamed Group' && n.chatTitle !== 'Unnamed Channel'
           ? n.chatTitle
           : null;
-      const data: any = { contactId: contact.id, chatType: n.chatType, isSelfChat: n.isSelf };
+      const data: any = {};
+      if (conv.contactId !== contact.id) data.contactId = contact.id;
+      if (conv.chatType !== n.chatType) data.chatType = n.chatType;
       const at = activityDate(n.chat.conversationTimestamp);
       if (at && (!conv.lastMessageAt || at > conv.lastMessageAt)) data.lastMessageAt = at;
-      if (titleWorth) data.title = titleWorth;
-      else if (n.isSelf) data.title = n.displayName;
-      if (n.chat.unreadCount !== undefined) data.unreadCount = n.chat.unreadCount;
-      updatePromises.push(
-        this.prisma.conversation.update({ where: { id: conv.id }, data }).catch(() => {})
-      );
-      if (n.isNewsletter && (!titleWorth || titleWorth === 'Unnamed Channel')) {
-        this.enrichChannelMetadata(userId, whatsappAccountId, conv.id, n.remoteJid).catch(() => {});
+      if (titleWorth && conv.title !== titleWorth) data.title = titleWorth;
+      else if (n.isSelf && conv.title !== n.displayName) data.title = n.displayName;
+      if (n.chat.unreadCount !== undefined && conv.unreadCount !== n.chat.unreadCount) data.unreadCount = n.chat.unreadCount;
+      if (Object.keys(data).length > 0) {
+        toUpdateConvs.push({ id: conv.id, data, remoteJid: n.remoteJid, isNewsletter: n.isNewsletter, titleWorth });
       }
     }
-    if (updatePromises.length) await Promise.all(updatePromises);
+    const convChunkSize = 30;
+    for (let i = 0; i < toUpdateConvs.length; i += convChunkSize) {
+      const batch = toUpdateConvs.slice(i, i + convChunkSize);
+      await Promise.all(
+        batch.map((b) =>
+          this.prisma.conversation.update({ where: { id: b.id }, data: b.data }).catch(() => {})
+        )
+      );
+    }
 
     await this.storeChatTitles(userId, whatsappAccountId, normalisedChats.map((n) => n.remoteJid));
 
@@ -2148,6 +2171,48 @@ export class WhatsAppEventService {
       });
     }
 
+    // Instant fast-path AI extraction for incoming messages in this batch (< 50ms)
+    try {
+      const candidateInstantRows = messageRows
+        .filter((r) => !r.isFromMe && r.textContent && r.textContent.trim().length > 3)
+        .slice(0, 40);
+
+      if (candidateInstantRows.length > 0) {
+        const extIds = candidateInstantRows.map((r) => r.externalMessageId);
+        const savedCandidateMsgs = await this.prisma.message.findMany({
+          where: { whatsappAccountId, externalMessageId: { in: extIds } },
+          select: {
+            id: true,
+            externalMessageId: true,
+            textContent: true,
+            conversationId: true,
+            senderContactId: true,
+            metadata: true,
+          },
+        });
+        const savedMap = new Map(savedCandidateMsgs.map((m) => [m.externalMessageId, m]));
+
+        for (const row of candidateInstantRows) {
+          const savedMsg = savedMap.get(row.externalMessageId);
+          if (!savedMsg || !savedMsg.textContent) continue;
+          const senderName = (savedMsg.metadata as any)?.senderName || 'Contact';
+          const isGroup = Boolean((savedMsg.metadata as any)?.isGroup);
+          await this.handleInstantExtraction(
+            userId,
+            whatsappAccountId,
+            savedMsg.conversationId,
+            savedMsg.senderContactId || undefined,
+            savedMsg.id,
+            savedMsg.textContent,
+            senderName,
+            isGroup
+          ).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`[INSTANT_EXTRACTION_BATCH] Notice: ${err.message}`);
+    }
+
     return inserted + existingIdSet.size;
   }
 
@@ -2167,14 +2232,31 @@ export class WhatsAppEventService {
     const isMeeting = /\b(meeting|meet|zoom|google meet|teams|call|bhetuya|bhet|appointment|interview|discussion|sync|collab)\b/i.test(t);
     const isPayment = /(₹|\brs\.?|\brupees?\b|\binr\b)\s?\d|\d\s?(₹|\brs\b|\brupees?\b)|\b(payment|fees?|invoice|paid|bhejo|transfer)\b/i.test(t);
     const isTask = /\b(urgent|asap|deadline|immediately|please send|share karo|bhejo|submit|submission|task|todo|work|complete|assignment)\b/i.test(t);
+    const isEvent = /\b(convocation|ceremony|annual\s?day|gathering|program|function|sohla|karyakram|celebration|farewell|reunion|party)\b/i.test(t);
 
-    if (!isBirthday && !isMeeting && !isPayment && !isTask) return;
+    if (!isBirthday && !isMeeting && !isPayment && !isTask && !isEvent) return;
 
-    const extractionType = isBirthday ? 'BIRTHDAY' : isMeeting ? 'MEETING' : isPayment ? 'PAYMENT' : 'TASK';
+    const existingExt = await this.prisma.aIExtraction.findFirst({
+      where: { messageId },
+      select: { id: true },
+    });
+    if (existingExt) return;
+
+    const extractionType = isBirthday
+      ? 'BIRTHDAY'
+      : isMeeting
+      ? 'MEETING'
+      : isEvent
+      ? 'EVENT'
+      : isPayment
+      ? 'PAYMENT'
+      : 'TASK';
     const title = isBirthday
       ? `Birthday: ${senderName}`
       : isMeeting
       ? `Meeting with ${senderName}`
+      : isEvent
+      ? `Event: ${senderName}`
       : isPayment
       ? `Payment update from ${senderName}`
       : `Task from ${senderName}`;
@@ -2194,9 +2276,9 @@ export class WhatsAppEventService {
         summary: text,
         description: text,
         status: 'ACTIVE',
-        priority: isMeeting || isBirthday ? 'URGENT' : 'HIGH',
+        priority: isMeeting || isBirthday || isEvent ? 'URGENT' : 'HIGH',
         actionRequired: true,
-        eventDate: isMeeting || isBirthday ? new Date() : null,
+        eventDate: isMeeting || isBirthday || isEvent ? new Date() : null,
         importanceScore: 1.0,
         confidenceScore: 0.95,
         timezone: 'Asia/Kolkata',

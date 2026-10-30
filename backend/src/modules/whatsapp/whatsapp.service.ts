@@ -1104,6 +1104,21 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
           await this.baileysAdapter.resyncSession(account.userId);
           this.eventService.updateSyncProgress(userId, { status: 'SYNCING', currentStage: 'CONVERSATIONS', progress: 60, message: 'Updating contacts and chats...' });
           await withTimeout(this.eventService.runSessionBackfill(userId, accountId), 15000, 'Updating contacts and chats').catch(() => {});
+          
+          // Request message history for recent active chats if message count is low
+          const existingMsgCount = await this.prisma.message.count({ where: { userId, whatsappAccountId: accountId } });
+          if (existingMsgCount < 30) {
+            const topConvs = await this.prisma.conversation.findMany({
+              where: { userId, whatsappAccountId: accountId },
+              take: 8,
+              orderBy: { lastMessageAt: 'desc' },
+              select: { externalChatId: true },
+            });
+            for (const c of topConvs) {
+              await this.baileysAdapter.fetchChatHistory(account.userId, c.externalChatId, 25).catch(() => {});
+            }
+          }
+          
           this.aiQueueService.processUnprocessedMessagesOnAIEnable(userId, { maxAgeHours: 72, maxMessages: 100 }).catch(() => {});
         } catch (err: any) {
           this.logger.warn(`Background session resync error: ${err.message}`);

@@ -117,13 +117,22 @@ export class ChatTitleService {
     ]);
 
     const index = this.buildIndex(contacts as ContactRow[], mappings);
-    let updated = 0;
-    for (const conv of convs as ConversationRow[]) {
+    const toUpdate = [];
+    for (const conv of convs) {
       const title = this.resolveTitle(conv, index);
-      if (title === conv.title) continue;
-      await this.prisma.conversation.update({ where: { id: conv.id }, data: { title } });
-      updated++;
+      if (title && title !== conv.title) {
+        toUpdate.push({ id: conv.id, title });
+      }
     }
-    return updated;
+    const chunkSize = 25;
+    for (let i = 0; i < toUpdate.length; i += chunkSize) {
+      const batch = toUpdate.slice(i, i + chunkSize);
+      await Promise.all(
+        batch.map((b) =>
+          this.prisma.conversation.update({ where: { id: b.id }, data: { title: b.title } }).catch(() => {})
+        )
+      );
+    }
+    return toUpdate.length;
   }
 }

@@ -405,7 +405,7 @@ export class BaileysAdapter implements IWhatsAppAdapter {
 
   private async wantsFullHistory(userId: string): Promise<boolean> {
     try {
-      return this.fullHistoryPolicy ? await this.fullHistoryPolicy(userId) : false;
+      return true;
     } catch {
       return false;
     }
@@ -502,7 +502,7 @@ export class BaileysAdapter implements IWhatsAppAdapter {
       markOnlineOnConnect: false, // CRITICAL: Prevents sending presence before security keys are finalized
       browser: Browsers.ubuntu('Chrome'),
       // Full history is only worth the download when the user keeps a long window of messages.
-      syncFullHistory: fullHistory,
+      syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
       defaultQueryTimeoutMs: 60000,
       connectTimeoutMs: 60000,
